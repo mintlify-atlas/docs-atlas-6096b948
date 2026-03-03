@@ -1,0 +1,85 @@
+{
+  "projectType": "saas",
+  "projectName": "KYA Hukuk & Danışmanlık",
+  "projectDescription": "Law firm website with content management, team profiles, articles, and client contact system.",
+  "theme": "linden",
+  "primaryColor": "#8B1538",
+  "lightColor": "#A63A56",
+  "darkColor": "#6B0E2A",
+  "navigation": {
+    "groups": [
+      {
+        "group": "Getting Started",
+        "pages": [
+          "introduction",
+          "quickstart",
+          "deployment"
+        ]
+      },
+      {
+        "group": "Features",
+        "pages": [
+          "features/admin-panel",
+          "features/content-management",
+          "features/team-management",
+          "features/practice-areas",
+          "features/articles",
+          "features/contact-system"
+        ]
+      },
+      {
+        "group": "Configuration",
+        "pages": [
+          "configuration/environment-variables",
+          "configuration/database-setup",
+          "configuration/github-storage",
+          "configuration/site-settings"
+        ]
+      },
+      {
+        "group": "User Guide",
+        "pages": [
+          "guide/admin-login",
+          "guide/managing-content",
+          "guide/managing-team",
+          "guide/managing-articles",
+          "guide/managing-areas",
+          "guide/hero-sections",
+          "guide/contact-messages"
+        ]
+      },
+      {
+        "group": "API Reference",
+        "pages": [
+          "api/routes",
+          "api/models",
+          "api/authentication"
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Admin dashboard with authentication",
+    "Team member profiles with photos and LinkedIn integration",
+    "Blog/article system with drafts and publishing",
+    "Practice areas management with custom icons",
+    "Contact form with message tracking",
+    "Hero section customization per page",
+    "GitHub-based image storage",
+    "PostgreSQL/SQLite database support",
+    "Vercel deployment ready"
+  ],
+  "publicApiSurface": [
+    "GET / - Homepage with hero, practice areas, and recent articles",
+    "GET /hakkimizda - About page",
+    "GET /ekibimiz - Team members page",
+    "GET /faaliyet - Practice areas page",
+    "GET /makaleler - Articles listing",
+    "GET /makaleler/<slug> - Article detail page",
+    "GET /iletisim - Contact page",
+    "POST /iletisim/gonder - Submit contact form",
+    "GET /admin/login - Admin login",
+    "GET /admin/dashboard - Admin dashboard",
+    "Admin routes for team, articles, practice areas, hero sections, settings"
+  ]
+}
