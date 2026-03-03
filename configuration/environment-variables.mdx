@@ -1,0 +1,213 @@
+---
+title: Environment variables
+description: Configure your KYA Hukuk application using environment variables for security, database connections, and feature settings
+---
+
+You can configure KYA Hukuk & Danışmanlık using environment variables. Store these in a `.env` file during development or configure them in your deployment platform.
+
+## Security
+
+These variables control application security and authentication.
+
+<ParamField path="SECRET_KEY" type="string" required>
+  Flask session encryption key. You must change this in production.
+  
+  **Default:** `kya-dev-secret-CHANGE-IN-PROD`
+  
+  ```bash
+  SECRET_KEY=your-random-secure-key-here
+  ```
+</ParamField>
+
+<ParamField path="SETUP_KEY" type="string">
+  Secret key for accessing the `/setup` endpoint to initialize the database remotely.
+  
+  ```bash
+  SETUP_KEY=your-setup-key
+  ```
+  
+  <Note>
+    Access database setup via `https://your-domain.com/setup?key=your-setup-key`
+  </Note>
+</ParamField>
+
+## Database connection
+
+The application supports both PostgreSQL and SQLite. Configure your database using one of these variables.
+
+<ParamField path="DATABASE_URL" type="string">
+  Primary database connection string. Supports PostgreSQL and SQLite.
+  
+  **PostgreSQL example:**
+  ```bash
+  DATABASE_URL=postgresql://user:password@host:5432/database?sslmode=require
+  ```
+  
+  **SQLite example:**
+  ```bash
+  DATABASE_URL=sqlite:///path/to/kya.db
+  ```
+  
+  <Note>
+    The application automatically converts `postgres://` to `postgresql+psycopg2://` and handles SSL configuration.
+  </Note>
+</ParamField>
+
+<ParamField path="DATABASE_URL_UNPOOLED" type="string">
+  Direct database connection without connection pooling. Automatically used by Neon Vercel integration.
+  
+  **Priority:** Second (after `DATABASE_URL`)
+  
+  ```bash
+  DATABASE_URL_UNPOOLED=postgresql://user:password@host:5432/database
+  ```
+</ParamField>
+
+<ParamField path="POSTGRES_URL" type="string">
+  PostgreSQL connection with pgbouncer pooling. Automatically provided by Neon Vercel integration.
+  
+  **Priority:** Third (after `DATABASE_URL_UNPOOLED`)
+  
+  <Warning>
+    The `pgbouncer` parameter is automatically removed as it conflicts with psycopg2.
+  </Warning>
+</ParamField>
+
+<ParamField path="POSTGRES_URL_NO_SSL" type="string">
+  PostgreSQL connection without SSL. Only use in development.
+  
+  **Priority:** Fourth (fallback)
+</ParamField>
+
+### Fallback behavior
+
+If no PostgreSQL connection is found:
+
+- **On Vercel:** Uses `/tmp/kya.db` (ephemeral, not recommended for production)
+- **Local development:** Uses `database/kya.db`
+
+<Warning>
+  Always configure a PostgreSQL database for production deployments. SQLite data is lost between Vercel deployments.
+</Warning>
+
+## File storage
+
+Configure GitHub-based image storage for production deployments.
+
+<ParamField path="GITHUB_TOKEN" type="string" required>
+  GitHub personal access token for storing uploaded images in your repository.
+  
+  ```bash
+  GITHUB_TOKEN=ghp_your_token_here
+  ```
+  
+  **Required permissions:**
+  - `repo` (full control of private repositories)
+  - Or `public_repo` (for public repositories only)
+  
+  <Note>
+    Generate a token at [github.com/settings/tokens](https://github.com/settings/tokens)
+  </Note>
+</ParamField>
+
+## Admin users
+
+Define up to four admin users via environment variables. Users are synchronized on every application startup.
+
+<ParamField path="ADMIN_USERNAME" type="string">
+  Primary admin username.
+  
+  ```bash
+  ADMIN_USERNAME=admin
+  ```
+</ParamField>
+
+<ParamField path="ADMIN_PASSWORD" type="string">
+  Primary admin password (minimum 8 characters).
+  
+  ```bash
+  ADMIN_PASSWORD=secure-password-here
+  ```
+</ParamField>
+
+<ParamField path="USER2_USERNAME" type="string">
+  Second admin username.
+</ParamField>
+
+<ParamField path="USER2_PASSWORD" type="string">
+  Second admin password.
+</ParamField>
+
+<ParamField path="USER3_USERNAME" type="string">
+  Third admin username.
+</ParamField>
+
+<ParamField path="USER3_PASSWORD" type="string">
+  Third admin password.
+</ParamField>
+
+<ParamField path="USER4_USERNAME" type="string">
+  Fourth admin username.
+</ParamField>
+
+<ParamField path="USER4_PASSWORD" type="string">
+  Fourth admin password.
+</ParamField>
+
+<Note>
+  Admin users are managed entirely through environment variables. Users not defined in environment variables are automatically removed from the database on startup.
+</Note>
+
+## Platform detection
+
+<ParamField path="VERCEL" type="string">
+  Automatically set by Vercel platform. Set to `1` when running on Vercel.
+  
+  **Used internally for:**
+  - SQLite path selection (`/tmp` vs `database/`)
+  - File upload validation (GitHub token required)
+  - Warning messages
+  
+  <Note>
+    You don't need to set this manually. Vercel automatically provides it.
+  </Note>
+</ParamField>
+
+## Complete example
+
+Here's a complete `.env` file example:
+
+```bash .env
+# Security
+SECRET_KEY=your-production-secret-key-here
+SETUP_KEY=your-setup-key
+
+# Database (Neon PostgreSQL)
+DATABASE_URL=postgresql://user:password@ep-cool-name-123.us-east-2.aws.neon.tech/kya?sslmode=require
+
+# File Storage
+GITHUB_TOKEN=ghp_your_github_token_here
+
+# Admin Users
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD=secure-admin-password
+
+USER2_USERNAME=editor
+USER2_PASSWORD=secure-editor-password
+```
+
+## Session configuration
+
+Session behavior is configured in `config.py` (not via environment variables):
+
+- **Session lifetime:** 3 hours from login
+- **Session refresh:** Disabled (time counts from login, not last activity)
+- **CSRF token lifetime:** 7200 seconds (2 hours)
+
+## File upload limits
+
+Configured in `config.py`:
+
+- **Max file size:** 8 MB
+- **Allowed extensions:** `png`, `jpg`, `jpeg`, `webp`, `gif`
+- **Upload directory:** `static/uploads/`

@@ -1,0 +1,350 @@
+---
+title: Articles
+description: Create, publish, and manage blog articles with rich text editing
+---
+
+The article system powers your firm's blog at `/makaleler`. It includes a rich text editor (Quill), automatic slug generation, draft/publish workflow, and cover images.
+
+## Article model
+
+Articles are stored in the `Article` model:
+
+<ParamField path="title" type="string" required>
+  Article headline (max 300 characters)
+</ParamField>
+
+<ParamField path="slug" type="string" required>
+  URL-friendly identifier (unique, max 300 characters)
+  
+  Example: `vergi-anlasmazligi-ve-vergi-uyusmazligi-kavramlari`
+</ParamField>
+
+<ParamField path="summary" type="text">
+  Short excerpt displayed on article list pages
+</ParamField>
+
+<ParamField path="content" type="text">
+  Full article content (HTML from Quill editor)
+</ParamField>
+
+<ParamField path="author" type="string">
+  Author name (max 150 characters)
+  
+  Example: `Av. Mehmet Emre Yiğit`
+</ParamField>
+
+<ParamField path="cover_url" type="string">
+  Cover image URL (max 500 characters)
+</ParamField>
+
+<ParamField path="is_published" type="boolean">
+  Publication status. Default: `false` (draft)
+</ParamField>
+
+<ParamField path="created_at" type="datetime">
+  Creation timestamp
+</ParamField>
+
+<ParamField path="published_at" type="datetime">
+  Publication timestamp (set when `is_published` becomes `true`)
+</ParamField>
+
+## Create new article
+
+<Steps>
+  <Step title="Navigate to articles">
+    Go to `/admin/makaleler` and click **Yeni Makale Yaz** (New Article).
+  </Step>
+  
+  <Step title="Fill article details">
+    At `/admin/makaleler/yeni`, complete the form:
+    
+    ### Basic information
+    
+    - **Makale Başlığı** (required): Article title
+    - **Slug**: Custom URL slug (optional — auto-generated from title if blank)
+    - **Özet**: Short summary for list pages
+    - **Yazar**: Author name
+    
+    ### Slug generation
+    
+    The `slugify()` function creates URL-friendly slugs:
+    
+    ```python
+    # From app.py:130
+    def slugify(text):
+        text = text.lower().strip()
+        # Turkish character replacement
+        replacements = {
+            'ş': 's', 'ı': 'i', 'ğ': 'g', 'ü': 'u', 'ö': 'o', 'ç': 'c',
+        }
+        for k, v in replacements.items():
+            text = text.replace(k, v)
+        text = re.sub(r'[^\w\s-]', '', text)
+        text = re.sub(r'[\s_-]+', '-', text)
+        return text.strip('-')
+    ```
+    
+    **Example**: `Vergi Anlaşmazlığı` → `vergi-anlasmazligi`
+    
+    ### Slug uniqueness
+    
+    If the generated slug already exists, the system appends a counter:
+    
+    ```python
+    # From app.py:458
+    base_slug, counter = slug, 1
+    while Article.query.filter_by(slug=slug).first():
+        slug = f"{base_slug}-{counter}"
+        counter += 1
+    ```
+    
+    Example: `vergi-anlasmazligi-1`, `vergi-anlasmazligi-2`, etc.
+  </Step>
+  
+  <Step title="Write content">
+    Use the **Quill rich text editor** for formatting:
+    
+    <Tabs>
+      <Tab title="Available formatting">
+        - Headings (H1, H2, H3)
+        - Bold, italic, underline, strikethrough
+        - Ordered and bulleted lists
+        - Blockquotes
+        - Code blocks
+        - Links
+      </Tab>
+      
+      <Tab title="How it works">
+        Quill converts your formatting to HTML:
+        
+        ```javascript
+        // From admin/article_form.html:107
+        document.getElementById('article-form').addEventListener('submit', function() {
+          document.getElementById('content-hidden').value = quill.root.innerHTML;
+        });
+        ```
+        
+        The HTML is stored in the `content` field and rendered on the public article page.
+      </Tab>
+    </Tabs>
+  </Step>
+  
+  <Step title="Add cover image">
+    You have two options:
+    
+    <Tabs>
+      <Tab title="Upload file">
+        Use **Kapak Görseli Yükle**:
+        
+        - Accepts JPG, PNG, WEBP
+        - Max 8 MB
+        - Cropped to 16:9 aspect ratio (1.78:1)
+        - Uploaded to GitHub or local storage
+      </Tab>
+      
+      <Tab title="External URL">
+        Paste a URL in **Kapak Görseli URL (harici)**:
+        
+        - Used if no file is uploaded
+        - Useful for stock photos (Unsplash, etc.)
+      </Tab>
+    </Tabs>
+  </Step>
+  
+  <Step title="Set publication status">
+    Check **Yayınla** to publish immediately:
+    
+    ```python
+    # From app.py:464
+    is_published = 'is_published' in request.form
+    article = Article(
+        ...
+        is_published=is_published,
+        published_at=datetime.utcnow() if is_published else None,
+    )
+    ```
+    
+    - **Checked**: Article appears on `/makaleler` and is accessible via `/makaleler/<slug>`
+    - **Unchecked**: Article is saved as a draft (visible only in admin)
+  </Step>
+  
+  <Step title="Save article">
+    Click **Kaydet** to create the article and return to the articles list.
+  </Step>
+</Steps>
+
+## Edit existing article
+
+<Steps>
+  <Step title="Select article">
+    From `/admin/makaleler`, click the edit icon next to any article.
+  </Step>
+  
+  <Step title="Update fields">
+    The form at `/admin/makaleler/<id>/duzenle` pre-fills all data. You can:
+    
+    - Update title, summary, content, author
+    - Change the slug (with uniqueness check)
+    - Replace the cover image
+    - Toggle publication status
+  </Step>
+  
+  <Step title="Slug update logic">
+    You can update the slug, but only if:
+    
+    1. The new slug is different from the current slug
+    2. No other article uses the new slug
+    
+    ```python
+    # From app.py:490
+    custom_slug = request.form.get('slug', '').strip()
+    if custom_slug and custom_slug != article.slug:
+        new_slug = slugify(custom_slug)
+        if not Article.query.filter(Article.id != article.id, Article.slug == new_slug).first():
+            article.slug = new_slug
+    ```
+  </Step>
+  
+  <Step title="Publication timestamp">
+    When you publish a draft:
+    
+    ```python
+    # From app.py:505
+    was_published = article.is_published
+    article.is_published = 'is_published' in request.form
+    if article.is_published and not was_published:
+        article.published_at = datetime.utcnow()
+    ```
+    
+    The `published_at` timestamp is set **only once** when transitioning from draft to published.
+  </Step>
+  
+  <Step title="Cover replacement">
+    When uploading a new cover:
+    
+    ```python
+    # From app.py:498
+    new_cover = save_upload(request.files.get('cover'))
+    if new_cover:
+        _delete_from_github(article.cover_url)  # Delete old cover
+        article.cover_url = new_cover
+    ```
+    
+    The old cover is automatically removed from GitHub.
+  </Step>
+  
+  <Step title="Save changes">
+    Click **Kaydet** to update the article.
+  </Step>
+</Steps>
+
+## Delete article
+
+<Warning>
+  Deletion is permanent and removes the article from public view immediately.
+</Warning>
+
+<Steps>
+  <Step title="Click delete">
+    From the articles list, click the delete icon (trash).
+  </Step>
+  
+  <Step title="Confirm deletion">
+    A browser confirmation dialog will appear.
+  </Step>
+  
+  <Step title="Removal process">
+    ```python
+    # From app.py:517
+    _delete_from_github(article.cover_url)  # Remove cover image
+    db.session.delete(article)
+    db.session.commit()
+    ```
+  </Step>
+</Steps>
+
+## Draft workflow
+
+<Tabs>
+  <Tab title="Create draft">
+    Uncheck **Yayınla** when creating or editing. The article:
+    
+    - Appears in the admin articles list with a grey "Taslak" badge
+    - Is **not** visible on `/makaleler`
+    - Cannot be accessed via `/makaleler/<slug>` (returns 404)
+  </Tab>
+  
+  <Tab title="Preview draft">
+    There is no built-in preview feature. To preview:
+    
+    1. Publish the article temporarily
+    2. View it on `/makaleler/<slug>`
+    3. Unpublish if needed
+    
+    Or implement a custom preview route that bypasses the `is_published` filter.
+  </Tab>
+  
+  <Tab title="Publish draft">
+    Edit the draft and check **Yayınla**. The article:
+    
+    - Receives a `published_at` timestamp
+    - Appears on `/makaleler`
+    - Is accessible via URL
+  </Tab>
+</Tabs>
+
+## Public display
+
+### Article list page (`/makaleler`)
+
+Shows all published articles in reverse chronological order:
+
+```python
+# From app.py:281
+articles = Article.query.filter_by(is_published=True).order_by(Article.published_at.desc()).all()
+```
+
+Each card displays:
+- Cover image
+- Title
+- Summary
+- Author
+- Published date
+- "Read More" link
+
+### Article detail page (`/makaleler/<slug>`)
+
+Displays the full article:
+
+```python
+# From app.py:287
+article = Article.query.filter_by(slug=slug, is_published=True).first_or_404()
+```
+
+<Note>
+  Unpublished articles return 404 on the public site, even if you know the slug.
+</Note>
+
+### Homepage preview
+
+The homepage shows the **3 most recent** published articles:
+
+```python
+# From app.py:255
+articles = Article.query.filter_by(is_published=True).order_by(Article.published_at.desc()).limit(3).all()
+```
+
+## Default articles
+
+On initial setup, two sample articles are created:
+
+1. **Vergi Anlaşmazlığı ve Vergi Uyuşmazlığı Kavramları**
+   - Slug: `vergi-anlasmazligi-ve-vergi-uyusmazligi-kavramlari`
+   - Published: 2024-06-01
+
+2. **Proforma Dolandırıcılığı**
+   - Slug: `proforma-dolandiricilik`
+   - Published: 2024-09-15
+
+See `init_db()` in app.py:904 for full seed data.

@@ -1,0 +1,268 @@
+---
+title: Contact messages
+description: View, read, and manage inquiries submitted through your website's contact form
+---
+
+Manage contact form submissions from potential clients and website visitors.
+
+## Accessing contact messages
+
+Navigate to:
+- From admin sidebar: Click "Mesajlar" (Messages)
+- Direct URL: `/admin/mesajlar`
+
+You'll see all messages in reverse chronological order (newest first) (app.py:674-679).
+
+## Message list interface
+
+The messages page displays:
+
+- **Unread count badge**: Red badge showing number of unread messages (app.py:678)
+- **Message table**: All messages with key information
+- **Visual indicators**: Unread messages have a red dot and bold styling (messages.html:29-33)
+
+### Message table columns
+
+Based on messages.html:16-26:
+
+| Column | Content | Notes |
+|--------|---------|-------|
+| Status | Red dot if unread | 8px circle indicator |
+| Ad Soyad | Sender's name | From contact form |
+| E-posta | Sender's email | Clickable mailto: link |
+| Konu | Message subject | Shows "—" if empty |
+| Tarih | Submission date/time | Format: DD.MM.YYYY HH:MM |
+| Actions | Expand/mark read/delete buttons | Right-aligned |
+
+## Viewing message details
+
+<Steps>
+  <Step title="Navigate to messages list">
+    Go to `/admin/mesajlar` to see all messages.
+  </Step>
+  
+  <Step title="Click the expand button">
+    Click the chevron-down button (▼) next to a message to expand it.
+  </Step>
+  
+  <Step title="Read the message content">
+    The full message text appears in an expandable row below (messages.html:61-73).
+    
+    The expanded view shows:
+    - Complete message text (preserves line breaks)
+    - "Yanıtla" (Reply) button that opens your email client
+  </Step>
+  
+  <Step title="Click again to collapse">
+    Click the chevron button again to hide the message content.
+  </Step>
+</Steps>
+
+### Auto-hide unread indicator
+
+When you expand a message, the JavaScript automatically:
+- Removes the bold styling
+- Hides the red dot indicator
+- Changes background from light red to white
+
+This provides visual feedback that you've viewed the message (messages.html:92-97).
+
+<Note>
+Expanding a message does NOT mark it as read in the database. Use the checkmark button to officially mark as read.
+</Note>
+
+## Marking messages as read
+
+<Steps>
+  <Step title="Find an unread message">
+    Unread messages have:
+    - Red dot in first column
+    - Bold font weight
+    - Light red background (#fdf8f8)
+  </Step>
+  
+  <Step title="Click the checkmark button">
+    Click the check button (✓) next to the message.
+  </Step>
+  
+  <Step title="Confirm the action">
+    The page reloads, and the message is marked as read. The form submits to `/admin/mesajlar/<id>/oku` (app.py:682-688).
+  </Step>
+</Steps>
+
+### Read status behavior
+
+- Marking as read sets `is_read=True` in database (app.py:686)
+- The checkmark button only appears for unread messages (messages.html:43-50)
+- Unread count badge updates automatically
+- There's no "mark as unread" feature
+
+## Replying to messages
+
+The system provides a quick reply button:
+
+<Steps>
+  <Step title="Expand the message">
+    Click the chevron button to view message details.
+  </Step>
+  
+  <Step title="Click 'Yanıtla' button">
+    At the bottom of the expanded message, click "Yanıtla" (Reply) (messages.html:67-70).
+  </Step>
+  
+  <Step title="Compose in your email client">
+    Your default email client opens with:
+    - **To**: Sender's email address
+    - **Subject**: "Re: [original subject]" or "Re: Mesajınız hakkında" if no subject
+  </Step>
+  
+  <Step title="Send your reply">
+    Compose and send your response through your email client.
+  </Step>
+</Steps>
+
+<Note>
+The reply feature uses `mailto:` links. It doesn't send email directly from the admin panel - it opens your configured email client (Outlook, Gmail, etc.).
+</Note>
+
+## Deleting messages
+
+<Warning>
+Deleting a message is permanent and cannot be undone. The message data is completely removed from the database.
+</Warning>
+
+<Steps>
+  <Step title="Find the message to delete">
+    Locate the message in the messages list.
+  </Step>
+  
+  <Step title="Click the delete button">
+    Click the trash icon button (🗑️) on the right side of the message row (messages.html:51-58).
+  </Step>
+  
+  <Step title="Confirm deletion">
+    A browser confirmation dialog appears: "Bu mesajı silmek istediğinizden emin misiniz?" (Are you sure you want to delete this message?)
+  </Step>
+  
+  <Step title="Confirm to delete">
+    Click "OK" to permanently delete the message. The form submits to `/admin/mesajlar/<id>/sil` (app.py:691-698).
+  </Step>
+</Steps>
+
+## Unread messages badge
+
+The admin sidebar shows an unread message count badge:
+
+- Appears next to "Mesajlar" menu item (app.py:237-244)
+- Shows number of messages where `is_read=False`
+- Updates automatically when messages are marked as read
+- Red background color to draw attention
+
+## Contact message model
+
+From models.py:97-110:
+
+```python
+class ContactMessage(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(150), nullable=False)
+    email = db.Column(db.String(200), nullable=False)
+    subject = db.Column(db.String(300), nullable=True)
+    message = db.Column(db.Text, nullable=False)
+    is_read = db.Column(db.Boolean, default=False)
+    ip_address = db.Column(db.String(45), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+```
+
+### Field descriptions
+
+- **name**: Sender's full name (required, up to 150 chars)
+- **email**: Sender's email address (required, up to 200 chars)
+- **subject**: Optional subject line (up to 300 chars)
+- **message**: Message body (required, text field)
+- **is_read**: Boolean flag for read status (default: False)
+- **ip_address**: IP address of submitter (for spam tracking)
+- **created_at**: Timestamp of submission
+
+## How messages are submitted
+
+Messages come from the public contact form at `/iletisim`.
+
+### Form submission process
+
+From app.py:298-330:
+
+1. Visitor fills out contact form with:
+   - Name (min 2 characters)
+   - Email (validated format)
+   - Subject (optional)
+   - Message (min 10 characters)
+
+2. Form submits to `/iletisim/gonder` via POST
+
+3. Server-side validation checks:
+   - Name length ≥ 2 characters (app.py:308)
+   - Valid email format (app.py:310)
+   - Message length ≥ 10 characters (app.py:312)
+
+4. If valid:
+   - Creates `ContactMessage` record (app.py:319-325)
+   - Saves to database
+   - Logs submission (app.py:328)
+   - Shows success message to visitor (app.py:329)
+
+5. If invalid:
+   - Shows error messages (app.py:315-317)
+   - Visitor can correct and resubmit
+
+### Spam prevention
+
+Basic spam prevention measures:
+
+- **CSRF tokens**: All form submissions require valid CSRF token
+- **Validation**: Minimum length requirements prevent blank submissions
+- **IP logging**: `ip_address` field stores submitter's IP for tracking
+- **Email validation**: Regex validation ensures proper email format (app.py:310)
+
+<Note>
+There's no CAPTCHA or rate limiting. Consider adding these if you receive spam submissions.
+</Note>
+
+## Dashboard statistics
+
+Contact message stats appear on the admin dashboard (app.py:370-371):
+
+- **total_messages**: Total count of all messages
+- **unread_messages**: Count of messages where `is_read=False`
+
+This gives you a quick overview of pending inquiries when you log in.
+
+## Best practices
+
+### Response time
+
+- Check messages daily (or enable email notifications externally)
+- Reply to inquiries within 24 hours
+- Mark messages as read after responding
+
+### Message management
+
+- **Don't delete immediately**: Keep messages until the matter is resolved
+- **Mark as read**: Use the read button to track which messages you've addressed
+- **Archive old messages**: Periodically delete messages older than 6-12 months
+
+### Security
+
+- **Verify sender identity**: Be cautious of potential phishing attempts
+- **Don't share sensitive info**: Reply only confirms your email responsiveness
+- **Check IP addresses**: If suspicious activity, check the `ip_address` field in the database
+
+## Empty state
+
+If no messages have been received, the page displays (messages.html:78-83):
+
+- Centered inbox icon
+- "Henüz mesaj yok" (No messages yet) text
+- Light gray styling
+
+This indicates the contact form is working but no submissions have been received.

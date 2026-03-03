@@ -1,0 +1,231 @@
+---
+title: Content management
+description: Manage site-wide settings, hero sections, and visual assets
+---
+
+The content management system provides centralized control over your website's appearance, contact information, and page hero sections.
+
+## Site settings
+
+Access site-wide configuration at `/admin/ayarlar`. All settings are stored in the `SiteSetting` model as key-value pairs.
+
+### Contact information
+
+<ParamField path="contact_address" type="textarea">
+  Physical office address displayed in the footer and contact page
+  
+  Default: `Balgat Mahallesi, Ziyabey Caddesi No: 14/8, Çankaya / ANKARA`
+</ParamField>
+
+<ParamField path="contact_phone" type="text">
+  Phone number with country code
+  
+  Default: `+90 312 123 45 67`
+</ParamField>
+
+<ParamField path="contact_email" type="email">
+  Primary contact email
+  
+  Default: `info@kyahukukdanismanlik.com`
+</ParamField>
+
+<ParamField path="contact_hours" type="text">
+  Business hours display
+  
+  Default: `Pazartesi - Cuma: 09:00 - 18:00`
+</ParamField>
+
+<ParamField path="whatsapp_number" type="text">
+  WhatsApp number without `+` prefix (e.g., `905312345678`)
+</ParamField>
+
+### Map integration
+
+<ParamField path="google_maps_embed" type="text">
+  Google Maps embed URL for the contact page. Use the **Embed** option from Google Maps, not the search URL.
+  
+  ```
+  https://www.google.com/maps/embed?pb=!1m18!1m12...
+  ```
+</ParamField>
+
+### Branding
+
+<Tabs>
+  <Tab title="Logo upload">
+    Upload custom logos via file input:
+    
+    - **Logo (light background)**: `logo_file` field → stored as `logo_url`
+    - **Logo (dark background)**: `logo_white_file` field → stored as `logo_white_url`
+    
+    Uploaded files are stored in GitHub repository (production) or local `/static/uploads/` (development).
+  </Tab>
+  
+  <Tab title="Logo URLs">
+    Alternatively, provide external URLs:
+    
+    - `logo_url`: Colored logo for light backgrounds
+    - `logo_white_url`: White logo for dark backgrounds
+    
+    Default values point to `/Assets/logo-color.webp` and `/Assets/logo-disi.webp`.
+  </Tab>
+  
+  <Tab title="Reset to default">
+    The `/admin/logo-sifirla` endpoint resets both logos to default values and clears the settings cache.
+  </Tab>
+</Tabs>
+
+### Footer and about text
+
+<ParamField path="footer_text" type="textarea">
+  Copyright notice in the footer
+  
+  Default: `© 2026 KYA Hukuk ve Danışmanlık. Tüm hakları saklıdır.`
+</ParamField>
+
+<ParamField path="about_short" type="textarea">
+  Short description displayed in the hero section
+  
+  Default: `Ulusal ve uluslararası hukuki danışmanlık & avukatlık hizmetleri.`
+</ParamField>
+
+### SEO meta descriptions
+
+Each page has a dedicated SEO description field:
+
+- `seo_desc_index` — Homepage
+- `seo_desc_hakkimizda` — About page
+- `seo_desc_ekibimiz` — Team page
+- `seo_desc_faaliyet` — Practice areas
+- `seo_desc_makaleler` — Articles/blog
+- `seo_desc_iletisim` — Contact page
+
+<Note>
+  These values are injected into `<meta name="description">` tags in your templates.
+</Note>
+
+## Hero sections
+
+Manage hero (banner) sections for all pages at `/admin/hero`. Each page has a dedicated hero with title, subtitle, and background image.
+
+### Available pages
+
+<Steps>
+  <Step title="Select page">
+    Choose from six page options:
+    - `index` — Homepage
+    - `hakkimizda` — About
+    - `ekibimiz` — Team
+    - `faaliyet` — Practice areas
+    - `makaleler` — Articles
+    - `iletisim` — Contact
+  </Step>
+  
+  <Step title="Edit content">
+    Update the following fields:
+    
+    <ParamField path="title" type="text">
+      Main hero heading (displayed large)
+    </ParamField>
+    
+    <ParamField path="subtitle" type="text">
+      Secondary text below the title
+    </ParamField>
+    
+    <ParamField path="image_url" type="string">
+      Background image — upload a file or provide an external URL (accepts both text URLs and file uploads)
+    </ParamField>
+  </Step>
+  
+  <Step title="Save changes">
+    Submit the form to update the `HeroSection` model (models.py:55). Changes are visible immediately on the public site.
+  </Step>
+</Steps>
+
+```python
+# From app.py:585
+hero = HeroSection.query.filter_by(page=page).first() or HeroSection(page=page)
+hero.title = request.form.get('title', '')
+hero.subtitle = request.form.get('subtitle', '')
+```
+
+### Default hero images
+
+<CardGroup cols={2}>
+  <Card title="Homepage" icon="house">
+    `/Assets/Atakule3.webp` — Local landmark photo
+  </Card>
+  
+  <Card title="Other pages" icon="image">
+    Unsplash stock photos for About, Team, Practice Areas, Articles, and Contact
+  </Card>
+</CardGroup>
+
+## File storage
+
+The system supports two storage modes:
+
+<Tabs>
+  <Tab title="GitHub (production)">
+    When `GITHUB_TOKEN` is set, files are uploaded to the GitHub repository:
+    
+    1. Files are saved to `static/uploads/{filename}` in the repo
+    2. Returns raw GitHub URL: `https://raw.githubusercontent.com/{owner}/{repo}/main/static/uploads/{filename}`
+    3. Implements file overwrite detection using SHA comparison
+    
+    ```python
+    # From app.py:68
+    def _upload_to_github(filename, file_bytes):
+        path = f'static/uploads/{filename}'
+        api_url = f'{_GH_API}/{path}'
+        # Check existing file for SHA
+        existing = http_client.get(api_url, headers=headers, timeout=10)
+        sha = existing.json().get('sha') if existing.status_code == 200 else None
+    ```
+  </Tab>
+  
+  <Tab title="Local (development)">
+    Without `GITHUB_TOKEN`, files are stored in the local `static/uploads/` directory.
+    
+    <Warning>
+      Vercel's filesystem is read-only. Local storage will fail in production without GitHub integration.
+    </Warning>
+  </Tab>
+</Tabs>
+
+### File deletion
+
+When you delete or replace team photos, article covers, or practice area images, the old files are automatically removed from GitHub via `_delete_from_github()` in app.py:93.
+
+## Settings cache
+
+For performance, site settings are cached with a 60-second TTL:
+
+```python
+# From app.py:209
+def site_settings() -> dict:
+    global _settings_cache, _settings_cache_ts
+    if time.time() - _settings_cache_ts < _SETTINGS_TTL and _settings_cache:
+        return _settings_cache
+    _settings_cache = {s.key: s.value for s in SiteSetting.query.all()}
+    _settings_cache_ts = time.time()
+    return _settings_cache
+```
+
+The cache is invalidated when you save settings via `_invalidate_settings_cache()` in app.py:224.
+
+<Note>
+  All templates access settings via the `settings` context variable, injected by the `inject_settings()` processor in app.py:230.
+</Note>
+
+## Allowed file formats
+
+Image uploads accept:
+- JPG/JPEG
+- PNG
+- WEBP
+- GIF
+
+Maximum file size: **8 MB**
+
+Filenames are sanitized with `secure_filename()` and timestamped to prevent conflicts in app.py:175.

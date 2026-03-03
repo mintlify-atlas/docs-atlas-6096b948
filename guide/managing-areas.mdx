@@ -1,0 +1,235 @@
+---
+title: Managing practice areas
+description: Add and edit your law firm's areas of expertise with icons and descriptions
+---
+
+Define and showcase your law firm's practice areas with custom icons, descriptions, and optional images.
+
+## Accessing practice areas
+
+Navigate to:
+- From admin sidebar: Click "Çalışma Alanları" (Practice Areas)
+- Direct URL: `/admin/alanlar`
+
+You'll see all practice areas ordered by `order_index` (app.py:527-531).
+
+## How practice areas work
+
+Practice areas are managed using a **bulk save** system:
+
+- All areas are displayed on a single page
+- You can edit multiple areas at once
+- Click "Tüm Değişiklikleri Kaydet" to save all changes
+- You can add new areas dynamically with JavaScript
+
+<Note>
+Unlike other content types, practice areas don't have individual add/edit pages. All changes are made on one form.
+</Note>
+
+## Editing existing practice areas
+
+<Steps>
+  <Step title="Navigate to practice areas">
+    Go to `/admin/alanlar`. All areas are displayed in order.
+  </Step>
+  
+  <Step title="Modify any fields">
+    Each area has these fields:
+    
+    **Required:**
+    - **Başlık** (Title): Name of the practice area
+    
+    **Optional:**
+    - **İkon** (Icon): Font Awesome class (e.g., `fa-solid fa-gavel`)
+    - **Açıklama** (Description): Brief explanation of the practice area
+    - **Görsel URL** (Image URL): Current image URL (blank to remove image)
+    - **Yeni Görsel Yükle** (Upload New Image): Upload a new image file
+    - **Aktif** (Active): Checkbox to show/hide on public site
+  </Step>
+  
+  <Step title="Save all changes">
+    Click "Tüm Değişiklikleri Kaydet" at the bottom. The form submits to `/admin/alanlar/kaydet` (app.py:534-562).
+  </Step>
+</Steps>
+
+### Practice area fields
+
+Based on practice_areas.html:18-61:
+
+| Field | Name | Type | Required | Notes |
+|-------|------|------|----------|-------|
+| Title | `title[]` | text | Yes | Area name |
+| Icon | `icon[]` | text | No | Font Awesome class |
+| Description | `desc[]` | textarea | No | Brief explanation |
+| Image URL | `image_url[]` | text | No | Existing image URL |
+| Upload Image | `image_file[]` | file | No | New image upload |
+| Active | `active[]` | checkbox | No | Display toggle |
+
+<Note>
+Field names use array notation (`title[]`, `icon[]`) because multiple areas are submitted together.
+</Note>
+
+## Adding a new practice area
+
+<Steps>
+  <Step title="Click 'Yeni Alan Ekle' button">
+    At the bottom of the practice areas form, click "Yeni Alan Ekle" (Add New Area).
+  </Step>
+  
+  <Step title="Fill out the new area fields">
+    A new area form block appears with empty fields. Enter:
+    
+    - **Title**: Practice area name (required)
+    - **Icon**: Font Awesome class (optional)
+    - **Description**: Brief description (optional)
+    - **Image**: Upload or URL (optional)
+    - **Active**: Checked by default
+  </Step>
+  
+  <Step title="Save all changes">
+    Click "Tüm Değişiklikleri Kaydet" to save the new area along with any other changes.
+  </Step>
+</Steps>
+
+The "Yeni Alan Ekle" button uses JavaScript to dynamically insert a new form block (practice_areas.html:90-110).
+
+## Font Awesome icons
+
+Practice areas use Font Awesome 6 icons for visual identification.
+
+### Icon format
+
+Enter the full Font Awesome class in the "İkon" field:
+
+```
+fa-solid fa-gavel
+```
+
+Breakdown:
+- `fa-solid`: Icon style (solid, regular, light, brands)
+- `fa-gavel`: Icon name
+
+### Recommended legal icons
+
+Some Font Awesome icons suitable for law firms:
+
+- `fa-solid fa-gavel` - Gavel (general law)
+- `fa-solid fa-balance-scale` - Scales of justice
+- `fa-solid fa-briefcase` - Briefcase (corporate law)
+- `fa-solid fa-landmark` - Government building (administrative law)
+- `fa-solid fa-users` - People (family/private law)
+- `fa-solid fa-file-signature` - Contracts
+- `fa-solid fa-lightbulb` - Intellectual property
+- `fa-solid fa-shield-halved` - Protection/defense
+
+### Finding icons
+
+Browse icons at:
+- https://fontawesome.com/icons
+- Filter by "solid" style for filled icons
+- Copy the class names (e.g., `fa-solid fa-scale-balanced`)
+
+<Note>
+The admin interface loads Font Awesome 6.5.0 CSS automatically (practice_areas.html:11).
+</Note>
+
+## Images for practice areas
+
+Practice areas can optionally include images:
+
+### Adding an image
+
+Two methods:
+
+1. **Upload file**: Click "Yeni Görsel Yükle" and select JPG/PNG/WEBP
+2. **External URL**: Paste URL in "Görsel URL" field
+
+Uploaded files take precedence over URLs (app.py:549-550).
+
+### Updating an image
+
+- Upload a new file to replace the current image
+- Change the URL to use a different external image
+- Clear the URL field to remove the image entirely
+
+### Image storage
+
+Images follow the same storage rules as other uploads:
+- Uploaded to GitHub repository if `GITHUB_TOKEN` is set
+- Stored locally in development mode
+- Old images are not automatically deleted (manual cleanup may be needed)
+
+## Bulk save behavior
+
+When you click "Tüm Değişiklikleri Kaydet", the system (app.py:534-562):
+
+1. **Deletes all existing practice areas** from database
+2. **Re-creates areas** from form data
+3. **Processes image uploads** for each area
+4. **Assigns order_index** based on form position (0, 1, 2, ...)
+
+<Warning>
+Because all areas are deleted and re-created, any areas not in the form will be permanently lost. Do not remove area form blocks unless you want to delete those areas.
+</Warning>
+
+### Active status
+
+The "Aktif" checkbox is stored as an array of indices (practice_areas.html:57):
+
+- If checkbox for area #2 is checked, `active[]=2` is sent
+- Backend checks if area's index is in the `active[]` array
+- Areas not in the array get `is_active=False`
+
+## Display order
+
+Practice areas are displayed in `order_index` order:
+
+- Order is determined by position in the form (0, 1, 2, ...) (app.py:556)
+- First area in form → order_index 0
+- Second area → order_index 1
+- And so on...
+
+To reorder areas:
+1. Rearrange the form blocks (manual reordering currently requires editing the database or re-creating areas in desired order)
+2. Save changes
+
+<Note>
+There's no drag-and-drop reordering UI. Areas are saved in the order they appear in the form.
+</Note>
+
+## Practice area model
+
+From models.py:83-95:
+
+```python
+class PracticeArea(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(150), nullable=False)
+    description = db.Column(db.Text, nullable=True)
+    icon = db.Column(db.String(80), default='fas fa-gavel')
+    image_url = db.Column(db.String(500), nullable=True)
+    order_index = db.Column(db.Integer, default=0)
+    is_active = db.Column(db.Boolean, default=True)
+```
+
+## Where practice areas appear
+
+Active practice areas are displayed on:
+
+- **Practice areas page** (`/faaliyet`): All active areas (app.py:275)
+- **Homepage** (`/`): First 6 active areas (app.py:254)
+
+Inactive areas are hidden from public view but remain in the database.
+
+## Default practice areas
+
+When the database is initialized, six default practice areas are created (app.py:886-901):
+
+1. **Ticaret ve Şirketler Hukuku** (`fa-solid fa-briefcase`)
+2. **Ceza Hukuku** (`fa-solid fa-gavel`)
+3. **İdare Hukuku** (`fa-solid fa-landmark`)
+4. **Özel Hukuk** (`fa-solid fa-users`)
+5. **Sözleşmeler Hukuku** (`fa-solid fa-file-signature`)
+6. **Fikri Mülkiyet Hukuku** (`fa-solid fa-lightbulb`)
+
+You can modify or delete these defaults as needed.

@@ -1,0 +1,794 @@
+---
+title: Routes
+description: Complete API route reference with methods, authentication, and parameters
+---
+
+## Overview
+
+KYA Hukuk & Danışmanlık Flask application exposes two main categories of routes:
+- **Public routes**: Accessible to all visitors
+- **Admin routes**: Protected by Flask-Login authentication
+
+---
+
+## Public routes
+
+### Home page
+
+<ParamField path="/" method="GET">
+  Renders the home page with hero section, practice areas (up to 6), and latest articles (up to 3)
+  
+  **Auth required**: No
+  
+  **Returns**: HTML template `index.html`
+  
+  **Database queries**:
+  - Hero section for page `index`
+  - Active practice areas ordered by `order_index`
+  - Published articles ordered by `published_at` descending
+</ParamField>
+
+### About page
+
+<ParamField path="/hakkimizda" method="GET">
+  Displays information about the law firm
+  
+  **Auth required**: No
+  
+  **Returns**: HTML template `hakkimizda.html`
+  
+  **Database queries**:
+  - Hero section for page `hakkimizda`
+</ParamField>
+
+### Team page
+
+<ParamField path="/ekibimiz" method="GET">
+  Lists all active team members (lawyers)
+  
+  **Auth required**: No
+  
+  **Returns**: HTML template `ekibimiz.html`
+  
+  **Database queries**:
+  - Hero section for page `ekibimiz`
+  - Active team members ordered by `order_index`
+</ParamField>
+
+### Practice areas page
+
+<ParamField path="/faaliyet" method="GET">
+  Shows all practice areas (legal services)
+  
+  **Auth required**: No
+  
+  **Returns**: HTML template `faaliyet.html`
+  
+  **Database queries**:
+  - Hero section for page `faaliyet`
+  - Active practice areas ordered by `order_index`
+</ParamField>
+
+### Articles list
+
+<ParamField path="/makaleler" method="GET">
+  Lists all published articles
+  
+  **Auth required**: No
+  
+  **Returns**: HTML template `makaleler.html`
+  
+  **Database queries**:
+  - Hero section for page `makaleler`
+  - Published articles ordered by `published_at` descending
+</ParamField>
+
+### Article detail
+
+<ParamField path="/makaleler/<slug>" method="GET">
+  Displays a single article by its slug
+  
+  **Auth required**: No
+  
+  **URL parameters**:
+  - `slug` (string): URL-friendly article identifier
+  
+  **Returns**: HTML template `makale_detay.html` or 404 if not found
+  
+  **Database queries**:
+  - Article with matching slug where `is_published=True`
+</ParamField>
+
+### Contact page
+
+<ParamField path="/iletisim" method="GET">
+  Shows contact information and form
+  
+  **Auth required**: No
+  
+  **Returns**: HTML template `iletisim.html`
+  
+  **Database queries**:
+  - Hero section for page `iletisim`
+</ParamField>
+
+### Contact form submission
+
+<ParamField path="/iletisim/gonder" method="POST">
+  Handles contact form submissions with server-side validation
+  
+  **Auth required**: No (CSRF protection enabled)
+  
+  **Form parameters**:
+  - `name` (string, required): Sender name (min 2 characters)
+  - `email` (string, required): Valid email address
+  - `subject` (string, optional): Message subject
+  - `message` (string, required): Message content (min 10 characters)
+  
+  **Validation rules**:
+  - Name must be at least 2 characters
+  - Email must match regex: `^[^@\s]+@[^@\s]+\.[^@\s]+$`
+  - Message must be at least 10 characters
+  
+  **Success**: Saves message to database, logs to app logger, redirects to `/iletisim` with success flash
+  
+  **Error**: Redirects to `/iletisim` with error flash messages
+  
+  **Database operations**:
+  - Creates new `ContactMessage` record with IP address
+</ParamField>
+
+---
+
+## Admin routes
+
+All admin routes require authentication via Flask-Login. Unauthenticated users are redirected to `/admin/login`.
+
+### Admin login
+
+<ParamField path="/admin/login" method="GET">
+  Displays admin login form
+  
+  **Auth required**: No
+  
+  **Returns**: HTML template `admin/login.html`
+  
+  **Behavior**: Redirects to dashboard if already authenticated
+</ParamField>
+
+<ParamField path="/admin/login" method="POST">
+  Authenticates admin user
+  
+  **Auth required**: No
+  
+  **Form parameters**:
+  - `username` (string): Admin username
+  - `password` (string): Admin password
+  
+  **Success**: 
+  - Logs in user with `login_user()`
+  - Sets `session.permanent = True` (3-hour session lifetime)
+  - Redirects to `next` parameter or dashboard
+  
+  **Error**: Redirects to login page with error flash
+  
+  **Security checks**:
+  - User exists in database
+  - Password hash matches
+  - User is active (`is_active=True`)
+</ParamField>
+
+### Admin logout
+
+<ParamField path="/admin/logout" method="GET">
+  Logs out the current admin user
+  
+  **Auth required**: Yes
+  
+  **Returns**: Redirects to `/admin/login`
+</ParamField>
+
+### Admin dashboard
+
+<ParamField path="/admin" method="GET">
+  Main admin dashboard with statistics
+  
+  **Auth required**: Yes
+  
+  **Aliases**: `/admin/dashboard`
+  
+  **Returns**: HTML template `admin/dashboard.html`
+  
+  **Statistics provided**:
+  - Active team members count
+  - Published articles count
+  - Draft articles count
+  - Active practice areas count
+  - Total contact messages
+  - Unread contact messages
+  
+  **Additional data**:
+  - 5 most recent articles (by `created_at`)
+</ParamField>
+
+---
+
+## Team management
+
+### List team members
+
+<ParamField path="/admin/ekip" method="GET">
+  Lists all team members (active and inactive)
+  
+  **Auth required**: Yes
+  
+  **Returns**: HTML template `admin/team.html`
+  
+  **Database queries**:
+  - All team members ordered by `order_index`
+</ParamField>
+
+### Create team member
+
+<ParamField path="/admin/ekip/yeni" method="GET">
+  Displays form to add a new team member
+  
+  **Auth required**: Yes
+  
+  **Returns**: HTML template `admin/team_form.html` with `member=None`
+</ParamField>
+
+<ParamField path="/admin/ekip/yeni" method="POST">
+  Creates a new team member
+  
+  **Auth required**: Yes
+  
+  **Form parameters**:
+  - `name` (string, required): Team member name
+  - `role` (string): Position/role
+  - `bio` (text): Biography
+  - `linkedin_url` (string): LinkedIn profile URL
+  - `photo` (file): Photo upload
+  - `photo_url_ext` (string): External photo URL (used if no file uploaded)
+  - `order_index` (integer): Display order (default: 0)
+  - `is_active` (checkbox): Active status
+  
+  **File handling**:
+  - Uploads photo to GitHub if `GITHUB_TOKEN` configured
+  - Falls back to local storage in development
+  - Vercel environments require GitHub token
+  
+  **Success**: Creates member, redirects to `/admin/ekip` with success flash
+</ParamField>
+
+### Edit team member
+
+<ParamField path="/admin/ekip/<int:mid>/duzenle" method="GET">
+  Displays form to edit existing team member
+  
+  **Auth required**: Yes
+  
+  **URL parameters**:
+  - `mid` (integer): Team member ID
+  
+  **Returns**: HTML template `admin/team_form.html` or 404 if not found
+</ParamField>
+
+<ParamField path="/admin/ekip/<int:mid>/duzenle" method="POST">
+  Updates an existing team member
+  
+  **Auth required**: Yes
+  
+  **URL parameters**:
+  - `mid` (integer): Team member ID
+  
+  **Form parameters**: Same as create endpoint
+  
+  **Photo handling**:
+  - If new photo uploaded: deletes old photo from GitHub, uploads new one
+  - If external URL provided: deletes old photo, uses external URL
+  - Otherwise: keeps existing photo
+  
+  **Success**: Updates member, redirects to `/admin/ekip` with success flash
+</ParamField>
+
+### Delete team member
+
+<ParamField path="/admin/ekip/<int:mid>/sil" method="POST">
+  Deletes a team member
+  
+  **Auth required**: Yes
+  
+  **URL parameters**:
+  - `mid` (integer): Team member ID
+  
+  **Behavior**:
+  - Deletes photo from GitHub repository
+  - Removes member record from database
+  - Redirects to `/admin/ekip` with info flash
+</ParamField>
+
+---
+
+## Article management
+
+### List articles
+
+<ParamField path="/admin/makaleler" method="GET">
+  Lists all articles (published and drafts)
+  
+  **Auth required**: Yes
+  
+  **Returns**: HTML template `admin/articles.html`
+  
+  **Database queries**:
+  - All articles ordered by `created_at` descending
+</ParamField>
+
+### Create article
+
+<ParamField path="/admin/makaleler/yeni" method="GET">
+  Displays form to create a new article
+  
+  **Auth required**: Yes
+  
+  **Returns**: HTML template `admin/article_form.html` with `article=None`
+</ParamField>
+
+<ParamField path="/admin/makaleler/yeni" method="POST">
+  Creates a new article
+  
+  **Auth required**: Yes
+  
+  **Form parameters**:
+  - `title` (string, required): Article title
+  - `slug` (string, optional): Custom URL slug (auto-generated from title if empty)
+  - `summary` (text): Article summary/excerpt
+  - `content` (text): Full article content (HTML)
+  - `author` (string): Author name
+  - `cover` (file): Cover image upload
+  - `cover_url_ext` (string): External cover image URL
+  - `is_published` (checkbox): Publish immediately
+  
+  **Slug generation**:
+  - Auto-slugifies title if custom slug not provided
+  - Ensures uniqueness by appending counter if slug exists
+  - Turkish character normalization (ş→s, ğ→g, etc.)
+  
+  **Publishing**:
+  - If `is_published` checked: sets `published_at` to current UTC time
+  - Otherwise: saves as draft with `published_at=None`
+  
+  **Success**: Creates article, redirects to `/admin/makaleler` with success flash
+</ParamField>
+
+### Edit article
+
+<ParamField path="/admin/makaleler/<int:aid>/duzenle" method="GET">
+  Displays form to edit existing article
+  
+  **Auth required**: Yes
+  
+  **URL parameters**:
+  - `aid` (integer): Article ID
+  
+  **Returns**: HTML template `admin/article_form.html` or 404 if not found
+</ParamField>
+
+<ParamField path="/admin/makaleler/<int:aid>/duzenle" method="POST">
+  Updates an existing article
+  
+  **Auth required**: Yes
+  
+  **URL parameters**:
+  - `aid` (integer): Article ID
+  
+  **Form parameters**: Same as create endpoint
+  
+  **Slug update logic**:
+  - Only updates slug if custom slug provided AND different from current
+  - Ensures new slug doesn't conflict with other articles
+  
+  **Publishing logic**:
+  - If article was draft and now published: sets `published_at` to current time
+  - If already published: keeps original `published_at`
+  
+  **Cover image handling**:
+  - Same deletion/replacement logic as team photos
+  
+  **Success**: Updates article, redirects to `/admin/makaleler` with success flash
+</ParamField>
+
+### Delete article
+
+<ParamField path="/admin/makaleler/<int:aid>/sil" method="POST">
+  Deletes an article
+  
+  **Auth required**: Yes
+  
+  **URL parameters**:
+  - `aid` (integer): Article ID
+  
+  **Behavior**:
+  - Deletes cover image from GitHub repository
+  - Removes article record from database
+  - Redirects to `/admin/makaleler` with info flash
+</ParamField>
+
+---
+
+## Practice areas management
+
+### List practice areas
+
+<ParamField path="/admin/alanlar" method="GET">
+  Lists all practice areas
+  
+  **Auth required**: Yes
+  
+  **Returns**: HTML template `admin/practice_areas.html`
+  
+  **Database queries**:
+  - All practice areas ordered by `order_index`
+</ParamField>
+
+### Save practice areas (bulk)
+
+<ParamField path="/admin/alanlar/kaydet" method="POST">
+  Bulk saves all practice areas (delete all + re-insert)
+  
+  **Auth required**: Yes
+  
+  **Form parameters** (arrays):
+  - `title[]` (string[]): Area titles
+  - `desc[]` (string[]): Area descriptions
+  - `icon[]` (string[]): Font Awesome icon classes
+  - `image_url[]` (string[]): Existing/external image URLs
+  - `image_file[]` (file[]): New image uploads
+  - `active[]` (string[]): Indices of active areas
+  
+  **Processing logic**:
+  - Deletes all existing practice areas
+  - Iterates through arrays by index
+  - For each area:
+    - Uses uploaded file if provided, otherwise keeps existing URL
+    - Sets `order_index` based on array position
+    - Marks as active if index is in `active[]` array
+  - Skips empty titles
+  
+  **Success**: Recreates all areas, redirects to `/admin/alanlar` with success flash
+</ParamField>
+
+---
+
+## Hero sections management
+
+### List hero sections
+
+<ParamField path="/admin/hero" method="GET">
+  Manages hero sections for all pages
+  
+  **Auth required**: Yes
+  
+  **Returns**: HTML template `admin/hero.html`
+  
+  **Pages supported**:
+  - `index` (Anasayfa)
+  - `hakkimizda` (Hakkımızda)
+  - `ekibimiz` (Ekibimiz)
+  - `faaliyet` (Çalışma Alanları)
+  - `makaleler` (Makaleler)
+  - `iletisim` (İletişim)
+</ParamField>
+
+### Save hero section
+
+<ParamField path="/admin/hero/kaydet" method="POST">
+  Creates or updates a hero section for a specific page
+  
+  **Auth required**: Yes
+  
+  **Form parameters**:
+  - `page` (string, required): Page identifier
+  - `title` (string): Hero title
+  - `subtitle` (string): Hero subtitle
+  - `image` (file): Hero image upload
+  - `image_url_ext` (string): External image URL
+  
+  **Behavior**:
+  - Finds existing hero by page or creates new one
+  - Updates title and subtitle
+  - Replaces image if new upload or external URL provided
+  
+  **Success**: Redirects to `/admin/hero` with success flash
+</ParamField>
+
+---
+
+## Site settings management
+
+### View and edit settings
+
+<ParamField path="/admin/ayarlar" method="GET">
+  Displays all site settings
+  
+  **Auth required**: Yes
+  
+  **Returns**: HTML template `admin/settings.html`
+  
+  **Settings categories**:
+  - Contact information (address, phone, email, hours)
+  - Social links (WhatsApp number)
+  - Branding (logos, about text, footer text)
+  - SEO (page-specific meta descriptions)
+  - Map (Google Maps embed URL)
+</ParamField>
+
+<ParamField path="/admin/ayarlar" method="POST">
+  Updates site settings
+  
+  **Auth required**: Yes
+  
+  **Form parameters** (whitelisted keys):
+  - `contact_address` (textarea)
+  - `contact_phone` (text)
+  - `contact_email` (email)
+  - `contact_hours` (text)
+  - `google_maps_embed` (text)
+  - `whatsapp_number` (text)
+  - `about_short` (textarea)
+  - `logo_url` (text)
+  - `logo_white_url` (text)
+  - `footer_text` (textarea)
+  - `seo_desc_index` (textarea)
+  - `seo_desc_hakkimizda` (textarea)
+  - `seo_desc_ekibimiz` (textarea)
+  - `seo_desc_faaliyet` (textarea)
+  - `seo_desc_makaleler` (textarea)
+  - `seo_desc_iletisim` (textarea)
+  
+  **File uploads**:
+  - `logo_file` (file): Color logo for light backgrounds
+  - `logo_white_file` (file): White logo for dark backgrounds
+  
+  **Behavior**:
+  - Only saves settings present in form (allows partial updates)
+  - Invalidates settings cache after save
+  
+  **Success**: Redirects to `/admin/ayarlar` with success flash
+</ParamField>
+
+### Reset logos
+
+<ParamField path="/admin/logo-sifirla" method="POST">
+  Resets logos to default values
+  
+  **Auth required**: Yes
+  
+  **Behavior**:
+  - Sets `logo_url` to `/Assets/logo-color.webp`
+  - Sets `logo_white_url` to `/Assets/logo-disi.webp`
+  - Invalidates settings cache
+  
+  **Success**: Redirects to `/admin/ayarlar` with success flash
+</ParamField>
+
+---
+
+## Password management
+
+### Change password
+
+<ParamField path="/admin/sifre" method="GET">
+  Displays password change form
+  
+  **Auth required**: Yes
+  
+  **Returns**: HTML template `admin/change_password.html`
+</ParamField>
+
+<ParamField path="/admin/sifre" method="POST">
+  Changes current user's password
+  
+  **Auth required**: Yes
+  
+  **Form parameters**:
+  - `current_password` (string): Current password
+  - `new_password` (string): New password
+  - `new_password2` (string): New password confirmation
+  
+  **Validation**:
+  - Current password must match
+  - New passwords must match each other
+  - New password must be at least 8 characters
+  
+  **Success**: Updates password hash, redirects to `/admin/sifre` with success flash
+  
+  **Error**: Redirects to `/admin/sifre` with error flash
+</ParamField>
+
+---
+
+## Contact messages
+
+### List messages
+
+<ParamField path="/admin/mesajlar" method="GET">
+  Lists all contact form submissions
+  
+  **Auth required**: Yes
+  
+  **Returns**: HTML template `admin/messages.html`
+  
+  **Database queries**:
+  - All contact messages ordered by `created_at` descending
+  - Count of unread messages
+</ParamField>
+
+### Mark message as read
+
+<ParamField path="/admin/mesajlar/<int:mid>/oku" method="POST">
+  Marks a message as read
+  
+  **Auth required**: Yes
+  
+  **URL parameters**:
+  - `mid` (integer): Message ID
+  
+  **Behavior**: Sets `is_read=True`, redirects to `/admin/mesajlar`
+</ParamField>
+
+### Delete message
+
+<ParamField path="/admin/mesajlar/<int:mid>/sil" method="POST">
+  Deletes a contact message
+  
+  **Auth required**: Yes
+  
+  **URL parameters**:
+  - `mid` (integer): Message ID
+  
+  **Behavior**: Removes message from database, redirects to `/admin/mesajlar` with info flash
+</ParamField>
+
+---
+
+## Utility routes
+
+### Legacy logo redirect
+
+<ParamField path="/static/uploads/logo.png" method="GET">
+  Serves legacy PNG logo references
+  
+  **Auth required**: No
+  
+  **Returns**: `/Assets/logo-color.png` or 204 if not found
+</ParamField>
+
+### Assets file server
+
+<ParamField path="/Assets/<path:filename>" method="GET">
+  Serves static assets (logos, hero images)
+  
+  **Auth required**: No
+  
+  **URL parameters**:
+  - `filename` (path): File path within Assets directory
+  
+  **Returns**: File content or 404 if not found
+</ParamField>
+
+### Uploaded files server
+
+<ParamField path="/static/uploads/<path:filename>" method="GET">
+  Serves uploaded files from local storage
+  
+  **Auth required**: No
+  
+  **URL parameters**:
+  - `filename` (path): File path within uploads directory
+  
+  **Note**: Only used in development; production uses GitHub storage
+</ParamField>
+
+### Favicon
+
+<ParamField path="/favicon.ico" method="GET">
+  Serves site favicon
+  
+  **Auth required**: No
+  
+  **Returns**: `/static/favicon.svg` with `image/svg+xml` MIME type
+</ParamField>
+
+<ParamField path="/favicon.svg" method="GET">
+  Alternative favicon route
+  
+  **Auth required**: No
+  
+  **Returns**: Same as `/favicon.ico`
+</ParamField>
+
+### Health check
+
+<ParamField path="/health" method="GET">
+  System health and database connectivity check
+  
+  **Auth required**: No
+  
+  **Returns**: JSON object
+  
+  ```json
+  {
+    "status": "ok",
+    "db_url": "postgresql+psycopg2://...",
+    "on_vercel": false,
+    "db": "connected" // or "ERROR: ..."
+  }
+  ```
+</ParamField>
+
+### Database setup
+
+<ParamField path="/setup" method="GET">
+  Manual database initialization endpoint
+  
+  **Auth required**: No (requires `SETUP_KEY` query parameter)
+  
+  **Query parameters**:
+  - `key` (string, required): Must match `SETUP_KEY` environment variable
+  
+  **Behavior**:
+  - Creates all database tables
+  - Seeds default data (users, settings, heroes, sample content)
+  
+  **Success response**:
+  ```json
+  {
+    "status": "ok",
+    "message": "✓ Veritabanı kuruldu ve veriler yüklendi."
+  }
+  ```
+  
+  **Error responses**:
+  - 403: Invalid or missing key
+  - 500: Database initialization error
+</ParamField>
+
+---
+
+## Middleware and hooks
+
+### Admin subdomain redirect
+
+**Decorator**: `@app.before_request`
+
+**Purpose**: Redirects `admin.*` subdomains to main domain `/admin/*` paths
+
+**Behavior**:
+- Checks `Host` header for `admin.` prefix
+- Performs 301 redirect to `https://www.kyahukukdanismanlik.site{request.full_path}`
+
+### Context processor
+
+**Decorator**: `@app.context_processor`
+
+**Purpose**: Injects global variables into all templates
+
+**Variables injected**:
+- `settings`: Site settings dictionary (cached 60s)
+- `unread_messages_count`: Count of unread contact messages (admin pages only)
+
+### User loader
+
+**Decorator**: `@login_manager.user_loader`
+
+**Purpose**: Flask-Login callback to reload user from session
+
+**Implementation**: `app.py:33-35`
+
+```python
+@login_manager.user_loader
+def load_user(user_id):
+    return db.session.get(User, int(user_id))
+```

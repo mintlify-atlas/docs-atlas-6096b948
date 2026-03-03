@@ -1,0 +1,399 @@
+---
+title: Deployment
+description: Deploy KYA Hukuk to Vercel with PostgreSQL database and GitHub image storage for production use.
+---
+
+This guide covers deploying the Flask application to Vercel's serverless platform with PostgreSQL (Neon) and GitHub-based image storage.
+
+## Prerequisites
+
+Before deploying, you'll need:
+
+- A [Vercel](https://vercel.com) account (free tier works)
+- A [Neon](https://neon.tech) PostgreSQL database (free tier available)
+- A [GitHub](https://github.com) account and personal access token
+- Git repository with your code
+
+## Deployment overview
+
+The application uses:
+
+- **Vercel Functions** - Serverless Python runtime via `api/index.py:1`
+- **Neon PostgreSQL** - Serverless Postgres database with connection pooling
+- **GitHub API** - Persistent image storage (Vercel filesystem is read-only)
+
+## Database setup
+
+<Steps>
+  <Step title="Create Neon database">
+    1. Sign up at [neon.tech](https://neon.tech)
+    2. Create a new project
+    3. Copy the connection string (format: `postgresql://user:pass@ep-xxx.neon.tech/neondb?sslmode=require`)
+
+    <Info>
+      Neon provides `DATABASE_URL` and `DATABASE_URL_UNPOOLED`. Use the unpooled version for serverless (config.py:41).
+    </Info>
+  </Step>
+
+  <Step title="Configure connection pooling">
+    The application automatically configures optimal pooling for serverless (config.py:78):
+
+    ```python
+    SQLALCHEMY_ENGINE_OPTIONS = {
+        'pool_size': 1,          # Single connection per container
+        'max_overflow': 2,       # Allow burst connections
+        'pool_timeout': 10,      # Connection timeout
+        'pool_recycle': 300,     # Refresh every 5 minutes
+        'pool_pre_ping': True,   # Health check before use
+    }
+    ```
+
+    This prevents connection exhaustion and handles Neon's idle timeout.
+  </Step>
+
+  <Step title="URL normalization">
+    The config automatically handles various PostgreSQL URL formats (config.py:15):
+
+    - Converts `postgres://` to `postgresql+psycopg2://`
+    - Removes `pgbouncer` parameters (incompatible with psycopg2)
+    - Preserves `sslmode=require` in the connection string
+
+    ```python
+    def _build_db_url(raw_url):
+        url = raw_url.replace('postgres://', 'postgresql://', 1)
+        if url.startswith('postgresql://') and '+' not in url.split('://')[0]:
+            url = url.replace('postgresql://', 'postgresql+psycopg2://', 1)
+        url = re.sub(r'[?&]pgbouncer=[^&]*', '', url)
+        return url, {}
+    ```
+  </Step>
+</Steps>
+
+## GitHub image storage
+
+<Info>
+  Vercel's filesystem is ephemeral and read-only in production. Images must be stored externally.
+</Info>
+
+<Steps>
+  <Step title="Create GitHub token">
+    Generate a personal access token:
+
+    1. Go to GitHub Settings → Developer settings → Personal access tokens → Tokens (classic)
+    2. Click "Generate new token (classic)"
+    3. Give it a descriptive name (e.g., "KYA Hukuk Image Uploads")
+    4. Select scope: `repo` (full repository access)
+    5. Generate and copy the token (starts with `ghp_`)
+
+    <Warning>
+      Store this token securely. You won't be able to see it again after closing the page.
+    </Warning>
+  </Step>
+
+  <Step title="Configure repository">
+    Update the GitHub repository details in `app.py:54`:
+
+    ```python
+    _GH_OWNER  = 'your-github-username'
+    _GH_REPO   = 'your-repository-name'
+    _GH_BRANCH = 'main'
+    ```
+
+    Images will be uploaded to `static/uploads/` in your repository.
+  </Step>
+
+  <Step title="How image upload works">
+    The `_upload_to_github()` function (app.py:68) handles uploads:
+
+    1. Reads file bytes from upload
+    2. Base64 encodes the content
+    3. Uses GitHub API to create/update file
+    4. Returns raw GitHub URL: `https://raw.githubusercontent.com/owner/repo/branch/path`
+
+    ```python
+    def _upload_to_github(filename, file_bytes):
+        path = f'static/uploads/{filename}'
+        api_url = f'{_GH_API}/{path}'
+        payload = {
+            'message': f'upload: {filename}',
+            'content': base64.b64encode(file_bytes).decode(),
+            'branch': _GH_BRANCH,
+        }
+        resp = http_client.put(api_url, json=payload, headers=headers)
+        return f'https://raw.githubusercontent.com/.../{path}'
+    ```
+
+    Image deletion is also supported via `_delete_from_github()` (app.py:93).
+  </Step>
+</Steps>
+
+## Vercel configuration
+
+The `vercel.json:1` file configures the serverless deployment:
+
+```json
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "api/index.py",
+      "use": "@vercel/python",
+      "config": {
+        "includeFiles": [
+          "static/**",
+          "Assets/**",
+          "templates/**",
+          "database/**"
+        ]
+      }
+    }
+  ],
+  "routes": [
+    {
+      "src": "/Assets/(.*)",
+      "headers": { "Cache-Control": "public, max-age=31536000, immutable" },
+      "dest": "/api/index.py"
+    },
+    {
+      "src": "/static/(.*)",
+      "headers": { "Cache-Control": "public, max-age=86400" },
+      "dest": "/api/index.py"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/api/index.py"
+    }
+  ]
+}
+```
+
+Key settings:
+- **@vercel/python** - Uses Python 3.9 runtime
+- **includeFiles** - Bundles templates and static assets
+- **Cache-Control** - Assets cached for 1 year, static for 1 day
+
+## Deploy to Vercel
+
+<Steps>
+  <Step title="Connect repository to Vercel">
+    1. Go to [vercel.com](https://vercel.com) and sign in
+    2. Click "Add New Project"
+    3. Import your Git repository
+    4. Vercel will detect the Python project automatically
+  </Step>
+
+  <Step title="Configure environment variables">
+    In the Vercel project settings, add these environment variables:
+
+    ```bash
+    # Required
+    SECRET_KEY=<generate-with-secrets.token_hex>
+    DATABASE_URL=postgresql://user:pass@ep-xxx.neon.tech/db?sslmode=require
+    GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxx
+
+    # Admin users (at least one required)
+    ADMIN_USERNAME=admin
+    ADMIN_PASSWORD=<strong-password>
+
+    # Optional: additional users
+    USER2_USERNAME=user2
+    USER2_PASSWORD=<strong-password>
+
+    # Optional: database setup key
+    SETUP_KEY=<random-string>
+    ```
+
+    <Note>
+      The `VERCEL=1` environment variable is automatically set by Vercel (config.py:11).
+    </Note>
+  </Step>
+
+  <Step title="Deploy the application">
+    Click "Deploy" and wait for the build to complete.
+
+    Vercel will:
+    1. Install dependencies from `requirements.txt`
+    2. Build the Python function from `api/index.py`
+    3. Deploy to a unique URL (e.g., `your-project.vercel.app`)
+
+    The first request will trigger database initialization (app.py:974).
+  </Step>
+
+  <Step title="Initialize the database">
+    After deployment, the database is automatically initialized on first request.
+
+    If automatic initialization fails, manually trigger it:
+
+    ```bash
+    curl https://your-project.vercel.app/setup?key=YOUR_SETUP_KEY
+    ```
+
+    This will:
+    - Create all database tables (app.py:737)
+    - Sync admin users from environment variables (app.py:756)
+    - Seed default settings and sample data (app.py:769)
+
+    <Warning>
+      The SETUP_KEY prevents unauthorized database resets. Keep it secure.
+    </Warning>
+  </Step>
+</Steps>
+
+## Verify deployment
+
+<Steps>
+  <Step title="Check application health">
+    Visit the health endpoint to verify database connectivity:
+
+    ```bash
+    curl https://your-project.vercel.app/health
+    ```
+
+    Expected response (app.py:936):
+
+    ```json
+    {
+      "status": "ok",
+      "db_url": "postgresql+psycopg2://user:***@ep...",
+      "on_vercel": true,
+      "db": "connected"
+    }
+    ```
+  </Step>
+
+  <Step title="Test admin login">
+    1. Visit `https://your-project.vercel.app/admin/login`
+    2. Login with your `ADMIN_USERNAME` and `ADMIN_PASSWORD`
+    3. Verify the dashboard loads with statistics
+  </Step>
+
+  <Step title="Test image upload">
+    1. Go to Admin → Team → Add New Member
+    2. Upload a profile photo
+    3. Save the member
+    4. Verify the image appears (should be a raw.githubusercontent.com URL)
+    5. Check your GitHub repository's `static/uploads/` folder for the file
+  </Step>
+</Steps>
+
+## Production optimizations
+
+### Caching strategy
+
+The application implements a 60-second cache for site settings (app.py:204):
+
+```python
+_settings_cache: dict = {}
+_settings_cache_ts: float = 0.0
+_SETTINGS_TTL = 60  # seconds
+
+def site_settings() -> dict:
+    global _settings_cache, _settings_cache_ts
+    if time.time() - _settings_cache_ts < _SETTINGS_TTL:
+        return _settings_cache
+    _settings_cache = {s.key: s.value for s in SiteSetting.query.all()}
+    return _settings_cache
+```
+
+Cache is invalidated when settings are updated (app.py:224).
+
+### Subdomain redirect
+
+The app redirects `admin.*` subdomains to the main domain (app.py:42):
+
+```python
+@app.before_request
+def admin_subdomain_redirect():
+    host = request.headers.get('Host', '').lower()
+    if host.startswith('admin.'):
+        target = f"https://www.kyahukukdanismanlik.site{request.path}"
+        return redirect(target, code=301)
+```
+
+### File upload validation
+
+Allowed file extensions are configured in `config.py:91`:
+
+```python
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'webp', 'gif'}
+MAX_CONTENT_LENGTH = 8 * 1024 * 1024  # 8 MB limit
+```
+
+## Troubleshooting
+
+### Database connection errors
+
+If you see "db: ERROR" in the health check:
+
+1. Verify `DATABASE_URL` is correct in Vercel environment variables
+2. Ensure `sslmode=require` is in the connection string
+3. Check Neon dashboard for database status
+4. Review Vercel function logs for detailed errors
+
+### Image upload fails
+
+If image uploads fail:
+
+1. Verify `GITHUB_TOKEN` has `repo` scope
+2. Check repository owner/name in `app.py:54`
+3. Ensure the repository exists and is accessible
+4. Review browser console for API errors
+
+The app shows user-friendly error messages (app.py:182):
+- "Görsel GitHub'a yüklenemedi" - Token permissions issue
+- "Vercel ortamında görsel yüklemek için GITHUB_TOKEN gereklidir" - Missing token
+
+### Admin users not syncing
+
+Users are synchronized on every cold start (app.py:748):
+
+- Users in environment variables are created/activated
+- Users NOT in environment variables are deleted
+
+Check Vercel function logs for sync messages:
+```
+✓ Yeni kullanıcı oluşturuldu: admin
+✓ Kullanıcılar senkronize: ['admin', 'user2']
+```
+
+### Session timeout issues
+
+Sessions expire after 3 hours (config.py:113). Users must re-login after timeout.
+
+To extend the session lifetime, modify in `config.py`:
+
+```python
+PERMANENT_SESSION_LIFETIME = timedelta(hours=8)  # 8 hours
+```
+
+## Custom domain
+
+To use a custom domain:
+
+1. Go to Vercel project settings → Domains
+2. Add your domain (e.g., `kyahukukdanismanlik.site`)
+3. Configure DNS records as instructed by Vercel
+4. SSL certificate is automatically provisioned
+
+## Monitoring
+
+### Vercel logs
+
+View real-time function logs in Vercel dashboard:
+- Request/response times
+- Database query performance
+- Python errors and tracebacks
+
+### Database metrics
+
+Monitor in Neon dashboard:
+- Active connections (should stay at 1-3)
+- Query performance
+- Storage usage
+
+### Application health
+
+Set up monitoring for:
+- `/health` endpoint availability
+- Admin login success rate
+- Image upload success rate

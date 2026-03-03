@@ -1,0 +1,223 @@
+---
+title: Hero sections
+description: Customize the hero banner images and headlines for each page on your website
+---
+
+Hero sections are the prominent banner areas at the top of each page. Customize the title, subtitle, and background image for each page.
+
+## What are hero sections?
+
+A hero section is the large visual banner at the top of a page, typically containing:
+
+- A background image
+- A headline (title)
+- A subtitle or tagline
+
+Each page on your website has its own hero section that you can customize independently.
+
+## Accessing hero management
+
+Navigate to:
+- From admin sidebar: Click "Sayfa Başlıkları" (Page Headers)
+- Direct URL: `/admin/hero`
+
+You'll see sections for all pages (app.py:567-579).
+
+## Available pages
+
+You can customize hero sections for these pages:
+
+1. **Anasayfa** (index) - Homepage at `/`
+2. **Hakkımızda** (hakkimizda) - About page at `/hakkimizda`
+3. **Ekibimiz** (ekibimiz) - Team page at `/ekibimiz`
+4. **Çalışma Alanları** (faaliyet) - Practice areas page at `/faaliyet`
+5. **Makaleler** (makaleler) - Articles page at `/makaleler`
+6. **İletişim** (iletisim) - Contact page at `/iletisim`
+
+Each page's hero section is configured separately (app.py:571-578).
+
+## Editing a hero section
+
+<Steps>
+  <Step title="Navigate to hero sections">
+    Go to `/admin/hero`. All page heroes are displayed as separate cards.
+  </Step>
+  
+  <Step title="Find the page you want to edit">
+    Scroll to the card for the page you want to customize (e.g., "Anasayfa", "Hakkımızda").
+  </Step>
+  
+  <Step title="Update the fields">
+    Each hero section has three fields:
+    
+    - **Başlık** (Title): Main headline text
+    - **Alt Yazı** (Subtitle): Secondary text below headline
+    - **Görsel** (Image): Background image (upload or URL)
+  </Step>
+  
+  <Step title="Upload or link an image">
+    Two options for the background image:
+    
+    1. **Upload file**: Click "Görsel Yükle" and select an image (max 8MB)
+    2. **External URL**: Enter URL in "Görsel URL" field (e.g., from Unsplash)
+    
+    Recommended: Wide horizontal images with 16:9 aspect ratio (hero.html:37)
+  </Step>
+  
+  <Step title="Save the page">
+    Click "Bu Sayfayı Kaydet" (Save This Page) below that hero section. Each page saves independently to `/admin/hero/kaydet` (app.py:582-598).
+  </Step>
+</Steps>
+
+### Hero section fields
+
+Based on hero.html:19-53:
+
+| Field | Name | Type | Required | Notes |
+|-------|------|------|----------|-------|
+| Title | `title` | text | No | Headline text |
+| Subtitle | `subtitle` | text | No | Tagline below title |
+| Upload Image | `image` | file | No | Background image upload |
+| Image URL | `image_url_ext` | url | No | External image URL |
+| Page | `page` | hidden | Yes | Page identifier (index, hakkimizda, etc.) |
+
+## Image guidelines
+
+For best results with hero images:
+
+### Aspect ratio
+
+Use wide horizontal images:
+- **Recommended**: 16:9 ratio (1920×1080, 1600×900, etc.)
+- Hero sections span the full width of the page
+- Tall images may be cropped on wider screens
+
+### File specifications
+
+- **Format**: JPG, PNG, or WEBP
+- **Size**: Max 8MB
+- **Resolution**: 1920px width or wider for HD displays
+- **Content**: Ensure important elements are centered (text overlay appears in center)
+
+### Image sources
+
+**Unsplash URLs:**
+
+You can use Unsplash images directly:
+```
+https://images.unsplash.com/photo-1505664194779-8beaceb93744?w=1600&q=80
+```
+
+Add query parameters:
+- `w=1600` - Width in pixels
+- `q=80` - Quality (1-100)
+
+**Uploaded files:**
+
+Files are stored in your GitHub repository or locally, depending on configuration.
+
+## Save behavior
+
+When you save a hero section (app.py:582-598):
+
+1. System looks up existing hero by `page` key
+2. If exists, updates the record
+3. If doesn't exist, creates a new `HeroSection`
+4. Updates title and subtitle from form
+5. Processes image:
+   - If file uploaded, saves and updates `image_url`
+   - If external URL provided (no upload), updates `image_url`
+   - If neither provided, keeps existing `image_url`
+6. Commits to database
+
+<Note>
+Unlike other content types, hero sections cannot be deleted through the UI. Each page always has a hero section (can be blank).
+</Note>
+
+## Hero section model
+
+From models.py:55-65:
+
+```python
+class HeroSection(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    page = db.Column(db.String(50), unique=True, nullable=False)
+    title = db.Column(db.String(200), nullable=True)
+    subtitle = db.Column(db.String(300), nullable=True)
+    image_url = db.Column(db.String(500), nullable=True)
+```
+
+- **page**: Unique identifier (index, hakkimizda, ekibimiz, etc.)
+- **title**: Headline text (up to 200 chars)
+- **subtitle**: Supporting text (up to 300 chars)
+- **image_url**: Path to background image
+
+## Default hero sections
+
+When the database is initialized, default heroes are created for all pages (app.py:838-860):
+
+| Page | Title | Subtitle | Image |
+|------|-------|----------|-------|
+| index | KELEŞTEMUR \| YİĞİT \| ALTAY | HUKUK VE DANIŞMANLIK | `/Assets/Atakule3.webp` |
+| hakkimizda | Hakkımızda | Hukukun Üstünlüğü ve Adalet İçin Buradayız | Unsplash |
+| ekibimiz | Avukat Kadromuz | Uzman ve Deneyimli Hukukçularımız | Unsplash |
+| faaliyet | Çalışma Alanları | Başlıca Uzmanlık Alanlarımız | Unsplash |
+| makaleler | Makaleler | Hukuki Bilgi Köşesi | Unsplash |
+| iletisim | İletişim | Bize Ulaşın | Unsplash |
+
+You can customize these defaults to match your firm's branding.
+
+## How hero sections are used
+
+Each public page template queries its hero section:
+
+```python
+# app.py:253 - Homepage
+hero = HeroSection.query.filter_by(page='index').first()
+
+# app.py:261 - About page
+hero = HeroSection.query.filter_by(page='hakkimizda').first()
+
+# app.py:266 - Team page
+hero = HeroSection.query.filter_by(page='ekibimiz').first()
+
+# And so on for other pages...
+```
+
+The hero object is passed to the template and rendered in the banner area.
+
+## Text display
+
+Hero text appears as overlay on the background image:
+
+- **Title**: Large, prominent font (typically serif for law firms)
+- **Subtitle**: Smaller font below title
+- **Text color**: Usually white or light color for contrast
+- **Background**: Often has a semi-transparent dark overlay for text readability
+
+<Note>
+The exact styling depends on your frontend templates. Test your changes on the public site to ensure text is readable over your chosen background image.
+</Note>
+
+## Best practices
+
+### Writing effective hero copy
+
+- **Title**: Keep it concise (2-6 words)
+- **Subtitle**: Brief value proposition or description (5-12 words)
+- **Tone**: Professional and authoritative for legal services
+
+### Choosing images
+
+- **Relevance**: Choose images that reflect the page content
+- **Consistency**: Use similar image styles across pages for cohesive branding
+- **Contrast**: Ensure text is readable - avoid busy backgrounds
+- **Local content**: Consider using photos of your actual office, city, or team
+
+### Homepage hero
+
+The homepage hero is the most important:
+- Use your firm's full name in the title
+- Include "HUKUK VE DANIŞMANLIK" or similar tagline
+- Choose a striking image that represents your location or expertise
+- Consider using a recognizable local landmark (like Atakule in the default)

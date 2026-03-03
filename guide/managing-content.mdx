@@ -1,0 +1,155 @@
+---
+title: Managing content
+description: Overview of content management capabilities in the KYA Hukuk admin panel
+---
+
+The admin panel provides comprehensive tools to manage all content on your law firm website. This guide provides an overview of available features.
+
+## Admin dashboard
+
+After logging in, you'll see the admin dashboard at `/admin/dashboard` with key statistics:
+
+- **Active team members** count
+- **Published articles** count
+- **Draft articles** count
+- **Active practice areas** count
+- **Total contact messages** received
+- **Unread messages** count
+- **Recent articles** (last 5)
+
+The dashboard provides a quick overview of your site's content status (app.py:361-374).
+
+## Content types
+
+You can manage five main content types:
+
+<CardGroup cols={2}>
+  <Card title="Team members" icon="users" href="/guide/managing-team">
+    Add, edit, and manage your law firm's team members with photos and bios
+  </Card>
+  
+  <Card title="Articles" icon="file-lines" href="/guide/managing-articles">
+    Create and publish legal articles with rich text content and cover images
+  </Card>
+  
+  <Card title="Practice areas" icon="briefcase" href="/guide/managing-areas">
+    Define your firm's areas of expertise with icons and descriptions
+  </Card>
+  
+  <Card title="Hero sections" icon="image" href="/guide/hero-sections">
+    Customize banner images and headlines for each page
+  </Card>
+  
+  <Card title="Contact messages" icon="envelope" href="/guide/contact-messages">
+    View and manage inquiries submitted through the contact form
+  </Card>
+</CardGroup>
+
+## Common features
+
+All content management sections share these features:
+
+### Form validation
+
+All forms include:
+- **CSRF protection**: Every form has a hidden CSRF token for security
+- **Required fields**: Marked with a red asterisk (*)
+- **Server-side validation**: Data is validated both client-side and server-side
+- **Flash messages**: Success/error messages appear after form submission
+
+### Image uploads
+
+The admin panel supports two methods for adding images:
+
+1. **File upload**: Upload images directly (max 8MB, formats: JPG, PNG, WEBP)
+2. **External URL**: Paste a URL to an external image (e.g., Unsplash)
+
+<Note>
+Images are stored on GitHub repository when `GITHUB_TOKEN` is configured (production), or locally in development mode.
+</Note>
+
+#### Image storage system
+
+The platform uses a hybrid storage approach (app.py:161-201):
+
+- **With GitHub token**: Images uploaded to `static/uploads/` in your GitHub repository
+- **Without GitHub token**: Images stored locally (development only)
+- **On Vercel**: GitHub token is required due to read-only filesystem
+
+### Active/inactive toggle
+
+Most content types have an "Active" checkbox:
+- **Checked**: Content appears on the public website
+- **Unchecked**: Content hidden from visitors but preserved in database
+
+This allows you to temporarily hide content without deleting it.
+
+### Order index
+
+Content that appears in lists (team members, practice areas) has an `order_index` field:
+- Lower numbers appear first
+- Default is 0
+- Allows precise control over display order
+
+## Site settings
+
+Access global site settings at `/admin/ayarlar` to configure:
+
+- **Contact information**: Address, phone, email, hours
+- **Social links**: WhatsApp number
+- **Logo uploads**: Color logo and white logo variants
+- **Google Maps**: Embed URL for location map
+- **SEO descriptions**: Meta descriptions for each page
+- **Footer text**: Copyright notice
+
+<Accordion title="Available settings keys">
+  - `contact_address`
+  - `contact_phone`
+  - `contact_email`
+  - `contact_hours`
+  - `google_maps_embed`
+  - `whatsapp_number`
+  - `about_short`
+  - `logo_url`
+  - `logo_white_url`
+  - `footer_text`
+  - `seo_desc_index`, `seo_desc_hakkimizda`, `seo_desc_ekibimiz`, etc.
+  
+  Full list available in app.py:607-624
+</Accordion>
+
+### Settings caching
+
+Settings are cached for 60 seconds to improve performance (app.py:204-227):
+- Cache automatically invalidates when you save changes
+- Reduces database queries on high-traffic pages
+
+## Database models
+
+All content is stored in a PostgreSQL database using these models:
+
+- **User**: Admin user accounts (models.py:9-26)
+- **SiteSetting**: Key-value configuration pairs (models.py:28-53)
+- **HeroSection**: Page hero banners (models.py:55-65)
+- **TeamMember**: Lawyer profiles (models.py:67-81)
+- **PracticeArea**: Legal practice areas (models.py:83-95)
+- **Article**: Blog articles (models.py:112-127)
+- **ContactMessage**: Contact form submissions (models.py:97-110)
+
+## Navigation
+
+The admin panel sidebar provides quick access to all management sections:
+
+- Dashboard
+- Team members (Ekip)
+- Articles (Makaleler)
+- Practice areas (Çalışma Alanları)
+- Hero sections (Sayfa Başlıkları)
+- Contact messages (Mesajlar)
+- Site settings (Ayarlar)
+- Change password (Şifre Değiştir)
+- Logout
+
+<Note>
+The unread message count badge appears in the sidebar when there are unread contact messages (app.py:237-244).
+</Note>

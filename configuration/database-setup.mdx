@@ -1,0 +1,322 @@
+---
+title: Database setup
+description: Configure PostgreSQL or SQLite database connections, run migrations, and initialize your KYA Hukuk database
+---
+
+KYA Hukuk supports both PostgreSQL (recommended for production) and SQLite (development only) databases.
+
+## Database selection
+
+The application automatically selects the database based on environment variables, in this priority order:
+
+<Steps>
+  <Step title="Check DATABASE_URL">
+    If `DATABASE_URL` is set and starts with `postgres` or `sqlite`, use it.
+  </Step>
+  
+  <Step title="Check DATABASE_URL_UNPOOLED">
+    Neon Vercel integration provides this for direct serverless connections.
+  </Step>
+  
+  <Step title="Check POSTGRES_URL">
+    Neon Vercel integration provides this with pgbouncer pooling (automatically removed).
+  </Step>
+  
+  <Step title="Check POSTGRES_URL_NO_SSL">
+    Fallback for local PostgreSQL without SSL.
+  </Step>
+  
+  <Step title="Fallback to SQLite">
+    - **On Vercel:** `/tmp/kya.db` (ephemeral)
+    - **Local development:** `database/kya.db`
+  </Step>
+</Steps>
+
+## PostgreSQL configuration
+
+### Connection string format
+
+PostgreSQL connection strings are automatically normalized:
+
+```bash
+# Original format (from Heroku, Railway, etc.)
+postgres://user:password@host:5432/database
+
+# Automatically converted to:
+postgresql+psycopg2://user:password@host:5432/database
+```
+
+### SSL mode
+
+The application preserves `sslmode` parameters in the connection URL:
+
+```bash
+DATABASE_URL=postgresql://user:pass@host/db?sslmode=require
+```
+
+<Note>
+  The `sslmode` parameter is handled by psycopg2 through libpq. No additional `connect_args` are needed.
+</Note>
+
+### Connection pooling
+
+For PostgreSQL, the application configures connection pooling optimized for serverless environments:
+
+```python config.py
+SQLALCHEMY_ENGINE_OPTIONS = {
+    'pool_size': 1,           # Single connection for serverless
+    'max_overflow': 2,        # Allow 2 additional connections
+    'pool_timeout': 10,       # 10 seconds timeout
+    'pool_recycle': 300,      # Recycle connections every 5 minutes
+    'pool_pre_ping': True,    # Check connections before use
+}
+```
+
+**Why these settings?**
+
+- **`pool_size=1`:** Serverless functions run single-threaded
+- **`pool_pre_ping=True`:** Detects stale connections and reconnects automatically
+- **`pool_recycle=300`:** Prevents Neon idle timeout issues (typically 5 minutes)
+
+<Warning>
+  Previous versions used `NullPool`, which created a new TCP connection for every request (adding 300-500ms latency). The current pooling configuration reuses connections across requests.
+</Warning>
+
+## SQLite configuration
+
+SQLite is used automatically when no PostgreSQL connection is available.
+
+### File paths
+
+<CodeGroup>
+```bash Vercel (ephemeral)
+/tmp/kya.db
+```
+
+```bash Local development
+./database/kya.db
+```
+</CodeGroup>
+
+<Warning>
+  **Never use SQLite in production on Vercel.** The `/tmp` directory is cleared between deployments, and each serverless instance has its own filesystem.
+</Warning>
+
+### Creating the database directory
+
+For local development, create the database directory:
+
+```bash
+mkdir -p database
+```
+
+The `init_db()` function will create the SQLite file automatically.
+
+## Database initialization
+
+The database is automatically initialized when the application starts. You can also trigger initialization manually.
+
+### Automatic initialization
+
+The application calls `init_db()` on startup (app.py:974):
+
+```python app.py
+try:
+    init_db()
+except Exception as _init_err:
+    print(f'[UYARI] init_db otomatik kurulum başarısız: {_init_err}')
+    print('[BİLGİ] /setup?key=<SETUP_KEY> adresini ziyaret ederek manuel kurulum yapabilirsiniz.')
+```
+
+### Manual initialization
+
+If automatic initialization fails, use the `/setup` endpoint:
+
+<Steps>
+  <Step title="Set SETUP_KEY environment variable">
+    ```bash
+    SETUP_KEY=your-secret-setup-key
+    ```
+  </Step>
+  
+  <Step title="Visit the setup URL">
+    ```bash
+    https://your-domain.com/setup?key=your-secret-setup-key
+    ```
+  </Step>
+  
+  <Step title="Verify success">
+    You should see a JSON response:
+    ```json
+    {
+      "status": "ok",
+      "message": "✓ Veritabanı kuruldu ve veriler yüklendi."
+    }
+    ```
+  </Step>
+</Steps>
+
+## What `init_db()` does
+
+The initialization function performs these operations:
+
+<Steps>
+  <Step title="Create all tables">
+    Creates tables for User, SiteSetting, HeroSection, TeamMember, PracticeArea, Article, and ContactMessage models.
+  </Step>
+  
+  <Step title="Sync admin users from environment variables">
+    - Reads `ADMIN_USERNAME`, `USER2_USERNAME`, etc. from environment
+    - Creates new users or activates existing ones
+    - Removes users not defined in environment variables
+    
+    <Note>
+      User passwords are only set during initial creation. Changing passwords requires using the admin panel.
+    </Note>
+  </Step>
+  
+  <Step title="Insert default settings">
+    Creates SiteSetting records for:
+    - Contact information (address, phone, email, hours)
+    - Logo URLs
+    - Google Maps embed
+    - WhatsApp number
+    - SEO descriptions for all pages
+  </Step>
+  
+  <Step title="Run column migrations">
+    Adds the `image_url` column to `practice_area` table if it doesn't exist.
+    
+    ```sql
+    ALTER TABLE practice_area ADD COLUMN image_url VARCHAR(500)
+    ```
+  </Step>
+  
+  <Step title="Migrate WebP assets">
+    Updates logo URLs from `.png` to `.webp` format:
+    - `/Assets/logo-color.png` → `/Assets/logo-color.webp`
+    - `/Assets/logo-disi.png` → `/Assets/logo-disi.webp`
+  </Step>
+  
+  <Step title="Seed hero sections">
+    Creates default hero banners for:
+    - `index` - Homepage
+    - `hakkimizda` - About page
+    - `ekibimiz` - Team page
+    - `faaliyet` - Practice areas page
+    - `makaleler` - Articles page
+    - `iletisim` - Contact page
+  </Step>
+  
+  <Step title="Seed team members">
+    Creates three founding partners:
+    - Av. Mehmet Emre Yiğit
+    - Av. Tevfik Keleştemur
+    - Av. Direnç Onat Altay
+  </Step>
+  
+  <Step title="Seed practice areas">
+    Creates six practice areas:
+    - Ticaret ve Şirketler Hukuku
+    - Ceza Hukuku
+    - İdare Hukuku
+    - Özel Hukuk
+    - Sözleşmeler Hukuku
+    - Fikri Mülkiyet Hukuku
+  </Step>
+  
+  <Step title="Seed sample articles">
+    Creates two published articles for demonstration.
+  </Step>
+</Steps>
+
+## Database health check
+
+Test your database connection using the `/health` endpoint:
+
+```bash
+curl https://your-domain.com/health
+```
+
+**Successful response:**
+
+```json
+{
+  "status": "ok",
+  "db_url": "postgresql://user:***@host:5432/data...",
+  "on_vercel": true,
+  "db": "connected"
+}
+```
+
+**Failed connection:**
+
+```json
+{
+  "status": "ok",
+  "db_url": "postgresql://user:***@host:5432/data...",
+  "on_vercel": true,
+  "db": "ERROR: connection refused"
+}
+```
+
+## Migration workflow
+
+The application includes basic migration support for schema changes.
+
+### Adding a new column
+
+When you add a column to a model, update `init_db()` to run the migration:
+
+```python app.py
+from sqlalchemy import text as _text, inspect as _inspect
+
+try:
+    inspector = _inspect(db.engine)
+    cols = [c['name'] for c in inspector.get_columns('your_table')]
+    if 'new_column' not in cols:
+        with db.engine.connect() as _conn:
+            _conn.execute(_text('ALTER TABLE your_table ADD COLUMN new_column VARCHAR(500)'))
+            _conn.commit()
+        print('✓ your_table.new_column kolonu eklendi.')
+except Exception as _migr_err:
+    print(f'[migration] your_table.new_column: {_migr_err}')
+```
+
+<Note>
+  The migration code is idempotent. It only adds the column if it doesn't exist, making it safe to run multiple times.
+</Note>
+
+## Troubleshooting
+
+### "No such table" errors
+
+If you see table errors, the database wasn't initialized:
+
+1. Check that `init_db()` ran successfully in application logs
+2. Manually trigger initialization via `/setup?key=YOUR_KEY`
+3. Verify database connection in `/health`
+
+### Connection timeout on Vercel
+
+If database queries time out:
+
+1. Verify `DATABASE_URL_UNPOOLED` is set (for Neon)
+2. Check that `sslmode=require` is in your connection string
+3. Ensure your database allows connections from Vercel IPs
+
+### SQLite on Vercel warning
+
+```
+[config] UYARI: Vercel ortamında Postgres URL bulunamadı! SQLite geçici kullanılıyor.
+```
+
+This means no PostgreSQL connection was configured. Set `DATABASE_URL` to fix.
+
+### Stale connections
+
+If you see "server closed the connection unexpectedly":
+
+1. Verify `pool_pre_ping=True` is enabled (default)
+2. Check `pool_recycle=300` matches your database idle timeout
+3. Increase idle timeout on your database provider (Neon: Settings → Compute → Suspend compute after)

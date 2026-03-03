@@ -1,0 +1,660 @@
+---
+title: Authentication
+description: Flask-Login setup, user management, and login flows
+---
+
+## Overview
+
+KYA Hukuk & Danışmanlık uses **Flask-Login** for session-based authentication. All admin routes require authentication, while public routes are accessible to everyone.
+
+**Key features**:
+- Session-based authentication (no JWT)
+- 3-hour session lifetime
+- Environment-based user management
+- Werkzeug password hashing
+- CSRF protection via Flask-WTF
+
+---
+
+## Flask-Login configuration
+
+**Source**: `app.py:27-30`
+
+<CodeGroup>
+```python Setup
+from flask_login import LoginManager
+
+login_manager = LoginManager(app)
+login_manager.login_view = 'admin_login'
+login_manager.login_message = 'Bu sayfayı görmek için giriş yapmanız gerekiyor.'
+login_manager.login_message_category = 'warning'
+```
+</CodeGroup>
+
+### Configuration options
+
+<ParamField path="login_view" type="string" default="admin_login">
+  Route name to redirect unauthenticated users
+  
+  **Value**: `admin_login`
+</ParamField>
+
+<ParamField path="login_message" type="string">
+  Flash message shown when login required
+  
+  **Value**: "Bu sayfayı görmek için giriş yapmanız gerekiyor." (Turkish: "You need to log in to view this page.")
+</ParamField>
+
+<ParamField path="login_message_category" type="string" default="warning">
+  Bootstrap alert class for login message
+  
+  **Value**: `warning`
+</ParamField>
+
+---
+
+## User loader
+
+**Source**: `app.py:33-35`
+
+Flask-Login requires a user loader callback to reload user objects from session.
+
+<CodeGroup>
+```python User loader
+@login_manager.user_loader
+def load_user(user_id):
+    return db.session.get(User, int(user_id))
+```
+</CodeGroup>
+
+**How it works**:
+
+1. Flask-Login stores `user_id` in session upon login
+2. On each request, calls `load_user(user_id)`
+3. Returns `User` object or `None`
+4. Makes user available via `current_user` proxy
+
+<ParamField path="user_id" type="string" required>
+  User ID stored in session (string)
+  
+  **Conversion**: Cast to `int` before database lookup
+</ParamField>
+
+<ResponseField name="return" type="User | None">
+  User object if found, `None` if user doesn't exist
+  
+  **Behavior**: Returns `None` silently logs out user
+</ResponseField>
+
+---
+
+## Login flow
+
+### Login page (GET)
+
+**Route**: `GET /admin/login`
+
+**Source**: `app.py:337-351`
+
+<CodeGroup>
+```python Login GET handler
+@app.route('/admin/login', methods=['GET', 'POST'])
+def admin_login():
+    if current_user.is_authenticated:
+        return redirect(url_for('admin_dashboard'))
+    # ... render login form
+    return render_template('admin/login.html')
+```
+</CodeGroup>
+
+**Behavior**:
+- Checks if user already authenticated
+- Redirects to dashboard if logged in
+- Renders login form if not authenticated
+
+### Login submission (POST)
+
+**Route**: `POST /admin/login`
+
+**Source**: `app.py:337-351`
+
+<CodeGroup>
+```python Login POST handler
+@app.route('/admin/login', methods=['GET', 'POST'])
+def admin_login():
+    if current_user.is_authenticated:
+        return redirect(url_for('admin_dashboard'))
+    
+    if request.method == 'POST':
+        username = request.form.get('username', '').strip()
+        password = request.form.get('password', '')
+        
+        user = User.query.filter_by(username=username).first()
+        
+        if user and user.check_password(password) and user.is_active:
+            login_user(user, remember=False)
+            session.permanent = True  # 3-hour PERMANENT_SESSION_LIFETIME
+            next_page = request.args.get('next')
+            return redirect(next_page or url_for('admin_dashboard'))
+        
+        flash('Kullanıcı adı veya şifre yanlış.', 'error')
+    
+    return render_template('admin/login.html')
+```
+</CodeGroup>
+
+### Authentication steps
+
+1. **Extract credentials** from form
+   ```python
+   username = request.form.get('username', '').strip()
+   password = request.form.get('password', '')
+   ```
+
+2. **Find user by username**
+   ```python
+   user = User.query.filter_by(username=username).first()
+   ```
+
+3. **Verify password and active status**
+   ```python
+   if user and user.check_password(password) and user.is_active:
+   ```
+
+4. **Log in user**
+   ```python
+   login_user(user, remember=False)  # No persistent cookie
+   session.permanent = True           # Enable 3-hour timeout
+   ```
+
+5. **Redirect**
+   - To `next` parameter if present (e.g., `/admin/ekip`)
+   - Otherwise to admin dashboard
+
+6. **Handle failure**
+   ```python
+   flash('Kullanıcı adı veya şifre yanlış.', 'error')
+   ```
+
+### Security checks
+
+<ParamField path="user exists" type="boolean" required>
+  User with username must exist in database
+  
+  **Check**: `User.query.filter_by(username=username).first()`
+</ParamField>
+
+<ParamField path="password valid" type="boolean" required>
+  Password must match stored hash
+  
+  **Check**: `user.check_password(password)`
+  
+  **Implementation**: Werkzeug's `check_password_hash`
+</ParamField>
+
+<ParamField path="user active" type="boolean" required>
+  User account must not be disabled
+  
+  **Check**: `user.is_active == True`
+</ParamField>
+
+---
+
+## Logout flow
+
+**Route**: `GET /admin/logout`
+
+**Source**: `app.py:354-358`
+
+<CodeGroup>
+```python Logout handler
+@app.route('/admin/logout')
+@login_required
+def admin_logout():
+    logout_user()
+    return redirect(url_for('admin_login'))
+```
+</CodeGroup>
+
+**Behavior**:
+1. Requires authentication (`@login_required`)
+2. Calls `logout_user()` (clears session)
+3. Redirects to login page
+
+---
+
+## Session configuration
+
+**Source**: `config.py:112-114`
+
+<CodeGroup>
+```python Session settings
+from datetime import timedelta
+
+class Config:
+    PERMANENT_SESSION_LIFETIME = timedelta(hours=3)
+    SESSION_REFRESH_EACH_REQUEST = False
+```
+</CodeGroup>
+
+<ParamField path="PERMANENT_SESSION_LIFETIME" type="timedelta" default="3 hours">
+  Session expiration time from login
+  
+  **Value**: `timedelta(hours=3)`
+  
+  **Behavior**: Session expires 3 hours after login, regardless of activity
+</ParamField>
+
+<ParamField path="SESSION_REFRESH_EACH_REQUEST" type="boolean" default="False">
+  Whether to reset timeout on each request
+  
+  **Value**: `False`
+  
+  **Behavior**: Timer starts at login and doesn't refresh. User must re-login after 3 hours even if active.
+</ParamField>
+
+<ParamField path="SECRET_KEY" type="string" required>
+  Flask secret key for session signing
+  
+  **Source**: `SECRET_KEY` environment variable
+  
+  **Fallback**: `kya-dev-secret-CHANGE-IN-PROD` (development only)
+  
+  **Security**: Must be unique and secure in production
+</ParamField>
+
+---
+
+## Password management
+
+### Password hashing
+
+**Source**: `models.py:18-19`
+
+<CodeGroup>
+```python Set password
+from werkzeug.security import generate_password_hash
+
+class User(UserMixin, db.Model):
+    def set_password(self, password):
+        self.password_hash = generate_password_hash(password)
+```
+</CodeGroup>
+
+**Algorithm**: Werkzeug default (pbkdf2:sha256)
+
+**Salt**: Automatically generated per password
+
+**Usage**:
+```python
+user = User(username='admin')
+user.set_password('secure_password_123')
+db.session.add(user)
+db.session.commit()
+```
+
+### Password verification
+
+**Source**: `models.py:21-22`
+
+<CodeGroup>
+```python Check password
+from werkzeug.security import check_password_hash
+
+class User(UserMixin, db.Model):
+    def check_password(self, password):
+        return check_password_hash(self.password_hash, password)
+```
+</CodeGroup>
+
+**Usage**:
+```python
+if user.check_password('password_attempt'):
+    login_user(user)
+else:
+    flash('Invalid password', 'error')
+```
+
+### Password change flow
+
+**Route**: `POST /admin/sifre`
+
+**Source**: `app.py:651-669`
+
+<CodeGroup>
+```python Change password handler
+@app.route('/admin/sifre', methods=['GET', 'POST'])
+@login_required
+def admin_change_password():
+    if request.method == 'POST':
+        current = request.form.get('current_password', '')
+        new1 = request.form.get('new_password', '')
+        new2 = request.form.get('new_password2', '')
+        
+        if not current_user.check_password(current):
+            flash('Mevcut şifre yanlış.', 'error')
+        elif new1 != new2:
+            flash('Yeni şifreler eşleşmiyor.', 'error')
+        elif len(new1) < 8:
+            flash('Şifre en az 8 karakter olmalı.', 'error')
+        else:
+            current_user.set_password(new1)
+            db.session.commit()
+            flash('Şifre güncellendi.', 'success')
+        
+        return redirect(url_for('admin_change_password'))
+    
+    return render_template('admin/change_password.html')
+```
+</CodeGroup>
+
+**Validation rules**:
+
+<ParamField path="current_password" type="string" required>
+  Current password must be correct
+  
+  **Check**: `current_user.check_password(current)`
+</ParamField>
+
+<ParamField path="new_password" type="string" required>
+  New password requirements:
+  - Minimum 8 characters
+  - Must match confirmation field
+  
+  **Checks**:
+  - `len(new1) >= 8`
+  - `new1 == new2`
+</ParamField>
+
+---
+
+## User management
+
+### Environment-based user sync
+
+**Source**: `app.py:739-766`
+
+Users are managed via environment variables, not admin panel. This prevents unauthorized user creation.
+
+<CodeGroup>
+```python User synchronization
+def init_db():
+    with app.app_context():
+        db.create_all()
+        
+        # Read allowed users from environment
+        _env_users = {}
+        for _prefix in ('ADMIN', 'USER2', 'USER3', 'USER4'):
+            _u = (app.config.get(f'{_prefix}_USERNAME') or '').strip()
+            _p = (app.config.get(f'{_prefix}_PASSWORD') or '').strip()
+            if _u and _p:
+                _env_users[_u] = _p
+        
+        # Delete users not in environment
+        for _usr in User.query.all():
+            if _usr.username not in _env_users:
+                db.session.delete(_usr)
+        db.session.flush()
+        
+        # Create or reactivate environment users
+        for _uname, _upass in _env_users.items():
+            _usr = User.query.filter_by(username=_uname).first()
+            if not _usr:
+                _usr = User(username=_uname, is_active=True)
+                _usr.set_password(_upass)
+                db.session.add(_usr)
+                print(f'✓ Yeni kullanıcı oluşturuldu: {_uname}')
+            else:
+                _usr.is_active = True  # Reactivate if disabled
+        
+        db.session.commit()
+        print(f'✓ Kullanıcılar senkronize: {list(_env_users.keys())}')
+```
+</CodeGroup>
+
+### Environment variables
+
+**Source**: `config.py:102-110`
+
+<ParamField path="ADMIN_USERNAME" type="string" required>
+  Primary admin username
+  
+  **Example**: `admin`
+</ParamField>
+
+<ParamField path="ADMIN_PASSWORD" type="string" required>
+  Primary admin password
+  
+  **Security**: Use strong password in production
+</ParamField>
+
+<ParamField path="USER2_USERNAME" type="string">
+  Additional admin username
+  
+  **Optional**: Leave empty to disable
+</ParamField>
+
+<ParamField path="USER2_PASSWORD" type="string">
+  Additional admin password
+  
+  **Required if**: `USER2_USERNAME` is set
+</ParamField>
+
+**Pattern**: Supports up to 4 users (`ADMIN`, `USER2`, `USER3`, `USER4`)
+
+### User synchronization behavior
+
+1. **On app startup**: `init_db()` runs automatically
+2. **Reads environment**: Builds allowed user dictionary
+3. **Deletes unauthorized users**: Removes users not in environment
+4. **Creates missing users**: Adds new users with hashed passwords
+5. **Reactivates disabled users**: Sets `is_active=True` for existing users
+6. **Preserves passwords**: Doesn't overwrite existing user passwords
+
+**Security implications**:
+- Users cannot be created via admin panel
+- Removing user from environment deletes them on next restart
+- Password changes via admin panel persist until next environment update
+
+---
+
+## Protected routes
+
+### Using `@login_required`
+
+**Pattern**:
+
+<CodeGroup>
+```python Protected route
+from flask_login import login_required
+
+@app.route('/admin/ekip')
+@login_required
+def admin_team():
+    # Only accessible if logged in
+    team = TeamMember.query.all()
+    return render_template('admin/team.html', team=team)
+```
+</CodeGroup>
+
+**Behavior**:
+- Checks if `current_user.is_authenticated`
+- If not: redirects to `login_view` with `next` parameter
+- If yes: executes route handler
+
+**Example redirect**: `/admin/ekip` → `/admin/login?next=%2Fadmin%2Fekip`
+
+### Current user object
+
+**Import**: `from flask_login import current_user`
+
+**Properties**:
+
+<ResponseField name="current_user.is_authenticated" type="boolean">
+  Whether user is logged in
+  
+  **True**: Valid session exists
+  
+  **False**: Anonymous user
+</ResponseField>
+
+<ResponseField name="current_user.is_active" type="boolean">
+  Whether user account is enabled
+  
+  **Check**: `User.is_active` field
+</ResponseField>
+
+<ResponseField name="current_user.is_anonymous" type="boolean">
+  Whether user is anonymous (not logged in)
+  
+  **Opposite of**: `is_authenticated`
+</ResponseField>
+
+<ResponseField name="current_user.get_id()" type="string">
+  User ID as string
+  
+  **Returns**: `str(user.id)`
+</ResponseField>
+
+**Usage examples**:
+
+<CodeGroup>
+```python Template usage
+{% if current_user.is_authenticated %}
+    <p>Welcome, {{ current_user.username }}!</p>
+    <a href="{{ url_for('admin_logout') }}">Logout</a>
+{% else %}
+    <a href="{{ url_for('admin_login') }}">Login</a>
+{% endif %}
+```
+
+```python Route logic
+@app.route('/admin/dashboard')
+@login_required
+def admin_dashboard():
+    # current_user is the logged-in User object
+    recent_articles = Article.query\
+        .filter_by(author=current_user.username)\
+        .order_by(Article.created_at.desc())\
+        .limit(5).all()
+    return render_template('admin/dashboard.html', articles=recent_articles)
+```
+</CodeGroup>
+
+---
+
+## CSRF protection
+
+**Source**: `app.py:25`
+
+<CodeGroup>
+```python CSRF setup
+from flask_wtf.csrf import CSRFProtect
+
+csrf = CSRFProtect(app)
+```
+</CodeGroup>
+
+**Configuration**: `config.py:117`
+
+<ParamField path="WTF_CSRF_TIME_LIMIT" type="integer" default="7200">
+  CSRF token expiration time in seconds
+  
+  **Value**: 7200 (2 hours)
+</ParamField>
+
+### CSRF in forms
+
+**All POST forms must include CSRF token**:
+
+<CodeGroup>
+```html CSRF token in template
+<form method="POST">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+    <!-- form fields -->
+    <button type="submit">Submit</button>
+</form>
+```
+</CodeGroup>
+
+**Protection**:
+- Token generated on page load
+- Validated on POST request
+- Prevents cross-site request forgery attacks
+
+### Exempt routes
+
+All routes protected by default. To exempt:
+
+<CodeGroup>
+```python Exempt specific route
+@app.route('/api/webhook', methods=['POST'])
+@csrf.exempt
+def webhook():
+    # External webhook, CSRF not applicable
+    return jsonify({'status': 'ok'})
+```
+</CodeGroup>
+
+---
+
+## Security best practices
+
+### Current implementation
+
+<ResponseField name="Password hashing" type="✓">
+  Uses Werkzeug's `pbkdf2:sha256` with automatic salt
+</ResponseField>
+
+<ResponseField name="CSRF protection" type="✓">
+  Enabled globally via Flask-WTF
+</ResponseField>
+
+<ResponseField name="Session-based auth" type="✓">
+  Server-side sessions, no JWT/token exposure
+</ResponseField>
+
+<ResponseField name="Environment-based users" type="✓">
+  Prevents unauthorized user creation via admin panel
+</ResponseField>
+
+<ResponseField name="Active user check" type="✓">
+  Login verifies `is_active` flag
+</ResponseField>
+
+### Recommendations
+
+<ResponseField name="Rate limiting" type="⚠">
+  Consider adding login attempt rate limiting
+  
+  **Suggestion**: Use `flask-limiter`
+  ```python
+  from flask_limiter import Limiter
+  limiter = Limiter(app, key_func=lambda: request.remote_addr)
+  
+  @app.route('/admin/login', methods=['POST'])
+  @limiter.limit("5 per minute")
+  def admin_login():
+      # ...
+  ```
+</ResponseField>
+
+<ResponseField name="Two-factor authentication" type="⚠">
+  Consider adding 2FA for enhanced security
+  
+  **Suggestion**: Use TOTP (Time-based One-Time Password) with `pyotp`
+</ResponseField>
+
+<ResponseField name="Session regeneration" type="⚠">
+  Regenerate session ID after login
+  
+  **Suggestion**: Add `session.regenerate()` after `login_user()`
+</ResponseField>
+
+<ResponseField name="Password policy" type="⚠">
+  Enforce stronger password requirements
+  
+  **Current**: Minimum 8 characters
+  
+  **Suggestion**: Require uppercase, lowercase, digit, special character
+</ResponseField>

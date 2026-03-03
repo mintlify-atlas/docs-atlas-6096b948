@@ -1,0 +1,394 @@
+---
+title: Site settings
+description: Configure site-wide settings using the SiteSetting model and admin panel
+---
+
+KYA Hukuk stores dynamic site configuration in the `SiteSetting` database model. You can manage these settings through the admin panel at `/admin/ayarlar`.
+
+## SiteSetting model
+
+The `SiteSetting` model stores key-value pairs for site-wide configuration.
+
+### Schema
+
+```python models.py
+class SiteSetting(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    key = db.Column(db.String(100), unique=True, nullable=False)
+    value = db.Column(db.Text, nullable=True)
+    label = db.Column(db.String(200), nullable=True)  # Admin panel label
+    type = db.Column(db.String(30), default='text')   # text, textarea, image, email, phone
+```
+
+### Class methods
+
+<ParamField path="SiteSetting.get(key, default=None)" type="method">
+  Retrieve a setting value by key.
+  
+  **Parameters:**
+  - `key` (str): Setting key
+  - `default`: Fallback value if key doesn't exist
+  
+  **Returns:** Setting value or default
+  
+  ```python
+  logo_url = SiteSetting.get('logo_url', '/default-logo.png')
+  ```
+  
+  **Location:** models.py:37
+</ParamField>
+
+<ParamField path="SiteSetting.set(key, value)" type="method">
+  Create or update a setting.
+  
+  **Parameters:**
+  - `key` (str): Setting key
+  - `value` (str): Setting value
+  
+  **Returns:** None (commits to database)
+  
+  ```python
+  SiteSetting.set('contact_phone', '+90 312 123 45 67')
+  ```
+  
+  **Location:** models.py:42
+</ParamField>
+
+## Caching
+
+Settings are cached in memory for 60 seconds to reduce database queries.
+
+### Cache implementation
+
+```python app.py
+_settings_cache: dict = {}
+_settings_cache_ts: float = 0.0
+_SETTINGS_TTL = 60  # seconds
+
+def site_settings() -> dict:
+    global _settings_cache, _settings_cache_ts
+    if time.time() - _settings_cache_ts < _SETTINGS_TTL and _settings_cache:
+        return _settings_cache
+    
+    _settings_cache = {s.key: s.value for s in SiteSetting.query.all()}
+    _settings_cache_ts = time.time()
+    return _settings_cache
+```
+
+### Cache invalidation
+
+The cache is cleared when settings are updated:
+
+```python app.py
+def _invalidate_settings_cache():
+    global _settings_cache_ts
+    _settings_cache_ts = 0.0
+
+# Called after saving settings:
+SiteSetting.set('logo_url', new_url)
+_invalidate_settings_cache()
+```
+
+<Note>
+  Without manual invalidation, changes take up to 60 seconds to appear. The admin panel automatically invalidates the cache after updates.
+</Note>
+
+## Template access
+
+All settings are available in templates via the `settings` context variable:
+
+```python app.py
+@app.context_processor
+def inject_settings():
+    return {'settings': site_settings()}
+```
+
+**Usage in templates:**
+
+```jinja
+{{ settings.get('contact_phone', 'No phone') }}
+{{ settings.get('contact_email') }}
+{{ settings.get('footer_text') }}
+```
+
+## Default settings
+
+These settings are created automatically by `init_db()` if they don't exist:
+
+### Contact information
+
+<ParamField path="contact_address" type="string" default="Balgat Mahallesi, Ziyabey Caddesi No: 14/8, Çankaya / ANKARA">
+  Physical office address displayed on contact page.
+</ParamField>
+
+<ParamField path="contact_phone" type="string" default="+90 312 123 45 67">
+  Primary contact phone number.
+</ParamField>
+
+<ParamField path="contact_email" type="string" default="info@kyahukukdanismanlik.com">
+  Primary contact email address.
+</ParamField>
+
+<ParamField path="contact_hours" type="string" default="Pazartesi - Cuma: 09:00 - 18:00">
+  Office hours displayed on contact page.
+</ParamField>
+
+<ParamField path="whatsapp_number" type="string" default="">
+  WhatsApp number with country code (no `+` prefix).
+  
+  **Example:** `905312345678`
+  
+  <Note>
+    Leave empty to hide WhatsApp integration.
+  </Note>
+</ParamField>
+
+### Branding
+
+<ParamField path="logo_url" type="string" default="/Assets/logo-color.webp">
+  Logo for light backgrounds (color version).
+</ParamField>
+
+<ParamField path="logo_white_url" type="string" default="/Assets/logo-disi.webp">
+  Logo for dark backgrounds (white version).
+</ParamField>
+
+<ParamField path="about_short" type="string" default="Ulusal ve uluslararası hukuki danışmanlık & avukatlık hizmetleri.">
+  Short description displayed in header and footer.
+</ParamField>
+
+<ParamField path="footer_text" type="string" default="© 2026 KYA Hukuk ve Danışmanlık. Tüm hakları saklıdır.">
+  Copyright text in footer.
+</ParamField>
+
+### Integrations
+
+<ParamField path="google_maps_embed" type="string">
+  Google Maps embed URL for contact page.
+  
+  **Default:**
+  ```
+  https://www.google.com/maps/embed?pb=!1m18!1m12!1m3...
+  ```
+  
+  <Note>
+    Get embed URLs from [Google Maps](https://www.google.com/maps) → Share → Embed a map.
+  </Note>
+</ParamField>
+
+### SEO descriptions
+
+Meta descriptions for each page:
+
+<ParamField path="seo_desc_index" type="string" default="KYA Hukuk ve Danışmanlık — Ankara'da ticaret, ceza, idare ve özel hukuk alanlarında uzman avukatlık hizmetleri.">
+  Homepage meta description.
+</ParamField>
+
+<ParamField path="seo_desc_hakkimizda" type="string" default="Keleştemur | Yiğit | Altay Hukuk ve Danışmanlık Ofisi hakkında bilgi alın.">
+  About page meta description.
+</ParamField>
+
+<ParamField path="seo_desc_ekibimiz" type="string" default="KYA Hukuk avukat kadrosu: Av. Mehmet Emre Yiğit, Av. Tevfik Keleştemur, Av. Direnç Onat Altay...">
+  Team page meta description.
+</ParamField>
+
+<ParamField path="seo_desc_faaliyet" type="string" default="KYA Hukuk çalışma alanları: Ticaret Hukuku, Ceza Hukuku, İdare Hukuku...">
+  Practice areas page meta description.
+</ParamField>
+
+<ParamField path="seo_desc_makaleler" type="string" default="KYA Hukuk güncel hukuki makaleler, içtihat değerlendirmeleri...">
+  Articles page meta description.
+</ParamField>
+
+<ParamField path="seo_desc_iletisim" type="string" default="KYA Hukuk ve Danışmanlık ile iletişime geçin. Ankara Balgat ofisimiz...">
+  Contact page meta description.
+</ParamField>
+
+### Section titles
+
+Customizable section headings:
+
+<ParamField path="home_practice_title" type="string" default="Çalışma Alanlarımız">
+  Homepage practice areas section title.
+</ParamField>
+
+<ParamField path="home_practice_subtitle" type="string" default="Başlıca uzmanlık alanlarımızı keşfedin.">
+  Homepage practice areas section subtitle.
+</ParamField>
+
+<ParamField path="home_articles_title" type="string" default="Son Makaleler">
+  Homepage articles section title.
+</ParamField>
+
+<ParamField path="home_articles_subtitle" type="string" default="Güncel hukuki içerikler ve makaleler.">
+  Homepage articles section subtitle.
+</ParamField>
+
+<ParamField path="about_values_title" type="string" default="Değerlerimiz">
+  About page values section title.
+</ParamField>
+
+<ParamField path="team_section_title" type="string" default="Avukat Kadromuz">
+  Team page section title.
+</ParamField>
+
+<ParamField path="areas_section_title" type="string" default="Çalışma Alanları">
+  Practice areas page section title.
+</ParamField>
+
+<ParamField path="articles_section_title" type="string" default="Güncel Makaleler">
+  Articles page section title.
+</ParamField>
+
+<ParamField path="contact_section_title" type="string" default="İletişim">
+  Contact page section title.
+</ParamField>
+
+<ParamField path="contact_section_subtitle" type="string" default="Sorularınız ve hukuki danışmanlık talepleriniz için bize ulaşın.">
+  Contact page section subtitle.
+</ParamField>
+
+## Supported setting types
+
+Settings are defined in the admin panel with these types:
+
+```python app.py
+setting_defs = [
+    ('contact_address', 'Adres', 'textarea'),
+    ('contact_phone', 'Telefon', 'text'),
+    ('contact_email', 'E-posta', 'email'),
+    ('google_maps_embed', 'Google Maps Embed URL', 'text'),
+    # ...
+]
+```
+
+**Available types:**
+- `text` - Single-line text input
+- `textarea` - Multi-line text input
+- `email` - Email input with validation
+- `image` - File upload with GitHub storage
+
+## Admin panel
+
+Settings are managed at `/admin/ayarlar`.
+
+### Editing settings
+
+<Steps>
+  <Step title="Navigate to settings">
+    Admin panel → Ayarlar
+  </Step>
+  
+  <Step title="Edit values">
+    Settings are organized in cards:
+    - **İletişim Bilgileri** - Contact info, WhatsApp, Google Maps
+    - **Logo & Marka** - Logo uploads and URLs
+    - **SEO Ayarları** - Meta descriptions
+  </Step>
+  
+  <Step title="Save changes">
+    Each card has its own save button. Changes are saved per-section.
+  </Step>
+  
+  <Step title="Verify update">
+    The cache is automatically invalidated. Changes appear immediately on the next page load.
+  </Step>
+</Steps>
+
+### Logo management
+
+Two special endpoints for logo management:
+
+**Upload logos:**
+```python
+POST /admin/ayarlar
+Content-Type: multipart/form-data
+
+logo_file: <file>
+logo_white_file: <file>
+```
+
+Uploaded files are stored via GitHub and URLs are updated automatically.
+
+**Reset to defaults:**
+```python
+POST /admin/logo-sifirla
+```
+
+Resets `logo_url` and `logo_white_url` to `/Assets/logo-color.webp` and `/Assets/logo-disi.webp`.
+
+## Programmatic access
+
+### In views
+
+```python
+from models import SiteSetting
+
+@app.route('/custom')
+def custom():
+    phone = SiteSetting.get('contact_phone')
+    email = SiteSetting.get('contact_email')
+    return render_template('custom.html', phone=phone, email=email)
+```
+
+### In templates
+
+```jinja
+<footer>
+  <p>{{ settings.get('footer_text') }}</p>
+  <p>{{ settings.get('contact_phone') }}</p>
+</footer>
+```
+
+### Updating settings
+
+```python
+from models import SiteSetting
+from app import _invalidate_settings_cache
+
+# Update a setting
+SiteSetting.set('contact_phone', '+90 555 123 4567')
+
+# Invalidate cache so changes appear immediately
+_invalidate_settings_cache()
+```
+
+## Migration and defaults
+
+Default settings are inserted during `init_db()` (app.py:769):
+
+```python
+defaults = {
+    'contact_address': 'Balgat Mahallesi...',
+    'contact_phone': '+90 312 123 45 67',
+    # ...
+}
+
+existing_settings = {s.key: s for s in SiteSetting.query.all()}
+for key, value in defaults.items():
+    if key not in existing_settings:
+        db.session.add(SiteSetting(key=key, value=value))
+```
+
+**Behavior:**
+- Only inserts missing keys (doesn't overwrite existing values)
+- Safe to run multiple times
+- Add new settings by updating the `defaults` dict
+
+### WebP logo migration
+
+Old `.png` logos are automatically migrated to `.webp`:
+
+```python app.py
+_MIGRATIONS = {
+    'logo_url':       ('/Assets/logo-color.png',  '/Assets/logo-color.webp'),
+    'logo_white_url': ('/Assets/logo-disi.png',   '/Assets/logo-disi.webp'),
+}
+
+for key, (old_val, new_val) in _MIGRATIONS.items():
+    row = existing_settings.get(key)
+    if row and row.value == old_val:
+        row.value = new_val
+```
+
+This runs during every `init_db()` call.

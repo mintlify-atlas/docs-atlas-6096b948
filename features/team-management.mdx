@@ -1,0 +1,262 @@
+---
+title: Team management
+description: Add, edit, and organize your law firm's team members
+---
+
+Manage your firm's attorneys and staff from `/admin/ekip`. The team management system supports photos, LinkedIn integration, custom ordering, and active/inactive status.
+
+## Team member model
+
+Each team member is stored in the `TeamMember` model with these fields:
+
+<ParamField path="name" type="string" required>
+  Full name (max 150 characters)
+</ParamField>
+
+<ParamField path="role" type="string">
+  Job title or position (e.g., "Kurucu Ortak", "Avukat", "Danışman")
+</ParamField>
+
+<ParamField path="bio" type="text">
+  Biography or professional background
+</ParamField>
+
+<ParamField path="photo_url" type="string">
+  Profile photo URL (max 500 characters)
+</ParamField>
+
+<ParamField path="linkedin_url" type="string">
+  LinkedIn profile URL (max 300 characters)
+</ParamField>
+
+<ParamField path="order_index" type="integer">
+  Display order (lower numbers appear first). Default: `0`
+</ParamField>
+
+<ParamField path="is_active" type="boolean">
+  Whether the member appears on the public site. Default: `true`
+</ParamField>
+
+<ParamField path="created_at" type="datetime">
+  Timestamp when the record was created
+</ParamField>
+
+## Add new team member
+
+<Steps>
+  <Step title="Navigate to team page">
+    Go to `/admin/ekip` and click **Yeni Üye Ekle** (New Member).
+  </Step>
+  
+  <Step title="Fill in details">
+    Complete the form at `/admin/ekip/yeni`:
+    
+    ### Basic information
+    
+    - **Ad Soyad** (required): Full name
+    - **Ünvan / Rol**: Position title
+    - **Biyografi**: Professional background (multi-line textarea)
+    
+    ### Photo upload
+    
+    You have two options for adding a photo:
+    
+    <Tabs>
+      <Tab title="Upload file">
+        Use the **Fotoğraf Yükle** field to upload from your computer:
+        
+        - Accepts JPG, PNG, WEBP
+        - Max 8 MB
+        - Image is cropped to 1:1 aspect ratio
+        - File is uploaded to GitHub (production) or local storage (development)
+        
+        ```python
+        # From app.py:390
+        photo_url = save_upload(request.files.get('photo'))
+        ```
+      </Tab>
+      
+      <Tab title="External URL">
+        Provide a direct image URL in the **Fotoğraf URL'si (harici)** field:
+        
+        - Useful for Unsplash, LinkedIn photos, etc.
+        - This URL is used if no file is uploaded
+      </Tab>
+    </Tabs>
+    
+    ### LinkedIn integration
+    
+    - **LinkedIn URL**: Paste the full profile URL (e.g., `https://linkedin.com/in/username`)
+    - This creates a clickable icon on the team member card
+    
+    ### Display settings
+    
+    - **Sıra No**: Order index (lower = appears first)
+    - **Aktif**: Check to display on the public site
+  </Step>
+  
+  <Step title="Save member">
+    Click **Kaydet** to create the team member. The system:
+    
+    1. Processes the photo upload
+    2. Creates a new `TeamMember` record
+    3. Commits to the database
+    4. Redirects to the team list
+    
+    ```python
+    # From app.py:391
+    member = TeamMember(
+        name=request.form['name'],
+        role=request.form.get('role', ''),
+        bio=request.form.get('bio', ''),
+        linkedin_url=request.form.get('linkedin_url', ''),
+        photo_url=photo_url or request.form.get('photo_url_ext', ''),
+        order_index=int(request.form.get('order_index', 0)),
+        is_active='is_active' in request.form,
+    )
+    ```
+  </Step>
+</Steps>
+
+## Edit team member
+
+<Steps>
+  <Step title="Select member">
+    From `/admin/ekip`, click the edit icon next to any team member.
+  </Step>
+  
+  <Step title="Update fields">
+    The edit form at `/admin/ekip/<id>/duzenle` pre-fills all existing data. You can:
+    
+    - Update text fields
+    - Replace the photo (uploads a new file and deletes the old one)
+    - Change the external photo URL
+    - Reorder the member
+    - Toggle active status
+  </Step>
+  
+  <Step title="Photo replacement logic">
+    When editing:
+    
+    ```python
+    # From app.py:412
+    new_photo = save_upload(request.files.get('photo'))
+    if new_photo:
+        _delete_from_github(member.photo_url)  # Remove old photo
+        member.photo_url = new_photo
+    elif request.form.get('photo_url_ext'):
+        _delete_from_github(member.photo_url)
+        member.photo_url = request.form['photo_url_ext']
+    ```
+    
+    <Note>
+      Old photos are automatically deleted from GitHub when you upload a new one or switch to an external URL.
+    </Note>
+  </Step>
+  
+  <Step title="Save changes">
+    Click **Kaydet** to update the record and return to the team list.
+  </Step>
+</Steps>
+
+## Delete team member
+
+<Warning>
+  Deletion is permanent and cannot be undone.
+</Warning>
+
+<Steps>
+  <Step title="Click delete">
+    From the team list, click the delete icon (trash) next to the member.
+  </Step>
+  
+  <Step title="Confirm deletion">
+    A browser confirmation dialog will appear.
+  </Step>
+  
+  <Step title="Removal process">
+    The system:
+    
+    1. Deletes the photo from GitHub storage
+    2. Removes the database record
+    3. Displays a success message
+    
+    ```python
+    # From app.py:434
+    _delete_from_github(member.photo_url)
+    db.session.delete(member)
+    db.session.commit()
+    ```
+  </Step>
+</Steps>
+
+## Team ordering
+
+Team members are displayed in ascending `order_index` order:
+
+```python
+# Public site (app.py:268)
+team = TeamMember.query.filter_by(is_active=True).order_by(TeamMember.order_index).all()
+
+# Admin list (app.py:382)
+team = TeamMember.query.order_by(TeamMember.order_index).all()
+```
+
+<Tabs>
+  <Tab title="Best practices">
+    - Use increments of 10 (0, 10, 20...) for easy reordering
+    - Founding partners: 0-9
+    - Senior attorneys: 10-19
+    - Associates: 20+
+  </Tab>
+  
+  <Tab title="Reordering">
+    To reorder:
+    
+    1. Edit the member
+    2. Change the **Sıra No** field
+    3. Save
+    
+    No need to update other members — the system sorts automatically.
+  </Tab>
+</Tabs>
+
+## Active/inactive status
+
+The `is_active` checkbox controls public visibility:
+
+- **Checked**: Member appears on `/ekibimiz` page
+- **Unchecked**: Member is hidden but remains in the database
+
+<Note>
+  This is useful for temporarily removing members (sabbatical, parental leave) without losing their data.
+</Note>
+
+## Default team members
+
+On initial setup, the system seeds three team members:
+
+1. **Av. Mehmet Emre Yiğit** — Kurucu Ortak (Ticaret Hukuku)
+2. **Av. Tevfik Keleştemur** — Kurucu Ortak (Ceza Hukuku)
+3. **Av. Direnç Onat Altay** — Kurucu Ortak (Özel Hukuk)
+
+See `init_db()` in app.py:862 for the full seed data.
+
+## Public display
+
+Active team members are displayed on the `/ekibimiz` page with:
+
+- Profile photo (circular crop)
+- Name and role
+- Biography excerpt
+- LinkedIn icon (if URL provided)
+- Hover effects and responsive grid layout
+
+```python
+# From app.py:265
+@app.route('/ekibimiz')
+def ekibimiz():
+    hero = HeroSection.query.filter_by(page='ekibimiz').first()
+    team = TeamMember.query.filter_by(is_active=True).order_by(TeamMember.order_index).all()
+    return render_template('ekibimiz.html', hero=hero, team=team)
+```

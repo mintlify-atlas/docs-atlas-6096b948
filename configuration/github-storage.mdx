@@ -1,0 +1,325 @@
+---
+title: GitHub storage
+description: Configure GitHub-based image storage for production deployments on Vercel and other serverless platforms
+---
+
+KYA Hukuk uses GitHub as a persistent storage backend for uploaded images. This is required for serverless deployments where the filesystem is ephemeral.
+
+## Why GitHub storage?
+
+Serverless platforms like Vercel have **read-only filesystems**. When you upload an image through the admin panel:
+
+- **Without GitHub storage:** File is lost when the serverless function shuts down
+- **With GitHub storage:** File is committed to your repository and served via GitHub's CDN
+
+**Benefits:**
+
+- Permanent storage (images survive deployments)
+- Free hosting via GitHub's infrastructure
+- Version control for all uploaded assets
+- Global CDN distribution via `raw.githubusercontent.com`
+
+## Setup
+
+<Steps>
+  <Step title="Create a GitHub personal access token">
+    Visit [github.com/settings/tokens](https://github.com/settings/tokens) and generate a new token.
+    
+    **Required permissions:**
+    - ✅ **`repo`** (full control of private repositories)
+    - Or **`public_repo`** (for public repositories only)
+    
+    <Note>
+      Copy the token immediately. GitHub only shows it once.
+    </Note>
+  </Step>
+  
+  <Step title="Add token to environment variables">
+    ```bash .env
+    GITHUB_TOKEN=ghp_your_token_here
+    ```
+    
+    For Vercel, add this in **Settings → Environment Variables**.
+  </Step>
+  
+  <Step title="Configure repository details">
+    The repository is hardcoded in `app.py` (lines 54-56):
+    
+    ```python app.py
+    _GH_OWNER  = 'demirarif'
+    _GH_REPO   = 'KYA-Hukuk'
+    _GH_BRANCH = 'main'
+    ```
+    
+    Update these values to match your repository.
+  </Step>
+  
+  <Step title="Test image upload">
+    1. Log in to `/admin`
+    2. Navigate to **Ekip → Yeni Ekip Üyesi**
+    3. Upload a photo
+    4. Check your repository's `static/uploads/` directory
+    
+    You should see a new commit with your uploaded file.
+  </Step>
+</Steps>
+
+## How it works
+
+When you upload an image through the admin panel:
+
+<Steps>
+  <Step title="File validation">
+    The `save_upload()` function checks:
+    - File exists and has a filename
+    - Extension is allowed (`png`, `jpg`, `jpeg`, `webp`, `gif`)
+    - File size is under 8 MB
+  </Step>
+  
+  <Step title="Filename generation">
+    Original filename is sanitized and timestamped:
+    
+    ```python
+    filename = f"{base}_{int(datetime.utcnow().timestamp())}{ext}"
+    # Example: team-photo_1709123456.jpg
+    ```
+  </Step>
+  
+  <Step title="Upload to GitHub">
+    The `_upload_to_github()` function:
+    1. Checks if file already exists (to get `sha` for updates)
+    2. Encodes file content as base64
+    3. Creates/updates file via GitHub API
+    4. Returns raw.githubusercontent.com URL
+    
+    ```python
+    POST /repos/{owner}/{repo}/contents/static/uploads/{filename}
+    {
+      "message": "upload: team-photo_1709123456.jpg",
+      "content": "<base64-encoded-file>",
+      "branch": "main",
+      "sha": "abc123..."  // For updates only
+    }
+    ```
+  </Step>
+  
+  <Step title="Store URL in database">
+    The returned URL is saved:
+    
+    ```
+    https://raw.githubusercontent.com/demirarif/KYA-Hukuk/main/static/uploads/team-photo_1709123456.jpg
+    ```
+  </Step>
+</Steps>
+
+## File deletion
+
+When you delete an entity with an uploaded image (team member, article, etc.), the image is automatically removed from GitHub.
+
+### Deletion flow
+
+```python app.py
+def _delete_from_github(url):
+    # 1. Parse raw.githubusercontent.com URL to extract path
+    # 2. Get file SHA via GitHub API
+    # 3. Delete file via GitHub API
+    # 4. Creates a delete commit
+```
+
+**Example:**
+
+```python
+# When deleting a team member:
+_delete_from_github(member.photo_url)
+db.session.delete(member)
+db.session.commit()
+```
+
+## Local development
+
+During local development without `GITHUB_TOKEN`, files are saved to `static/uploads/`:
+
+```python app.py
+if app.config.get('GITHUB_TOKEN'):
+    # Upload to GitHub
+    url = _upload_to_github(filename, file_bytes)
+else:
+    # Save locally
+    filepath = os.path.join(upload_dir, filename)
+    with open(filepath, 'wb') as f:
+        f.write(file_bytes)
+    return f'/static/uploads/{filename}'
+```
+
+<Warning>
+  If you deploy to Vercel without `GITHUB_TOKEN`, the application will reject all file uploads with an error message.
+</Warning>
+
+## Repository structure
+
+Uploaded files are stored in your repository:
+
+```
+KYA-Hukuk/
+├── static/
+│   └── uploads/
+│       ├── team-photo_1709123456.jpg
+│       ├── article-cover_1709234567.webp
+│       └── practice-area_1709345678.png
+├── app.py
+├── config.py
+└── ...
+```
+
+Each upload creates a commit:
+
+```bash
+commit abc123...
+Author: github-actions
+Date:   Mon Mar 3 12:34:56 2026
+
+    upload: team-photo_1709123456.jpg
+```
+
+Each deletion creates a commit:
+
+```bash
+commit def456...
+Author: github-actions
+Date:   Mon Mar 3 12:45:00 2026
+
+    delete: static/uploads/team-photo_1709123456.jpg
+```
+
+## API reference
+
+### `_upload_to_github(filename, file_bytes)`
+
+Uploads a file to the repository.
+
+**Parameters:**
+- `filename` (str): Sanitized filename with timestamp
+- `file_bytes` (bytes): Raw file content
+
+**Returns:**
+- `str`: Raw GitHub URL on success
+- `None`: On failure (logs error)
+
+**Location:** app.py:68
+
+### `_delete_from_github(url)`
+
+Deletes a file from the repository.
+
+**Parameters:**
+- `url` (str): raw.githubusercontent.com URL
+
+**Returns:** None (silent on errors)
+
+**Location:** app.py:93
+
+### `save_upload(file)`
+
+High-level upload function with validation.
+
+**Parameters:**
+- `file`: Flask FileStorage object from `request.files`
+
+**Returns:**
+- `str`: Public URL (GitHub or local)
+- `None`: On validation failure
+
+**Location:** app.py:161
+
+## GitHub API configuration
+
+The application uses these GitHub API settings:
+
+```python app.py
+_GH_OWNER  = 'demirarif'
+_GH_REPO   = 'KYA-Hukuk'
+_GH_BRANCH = 'main'
+_GH_API    = f'https://api.github.com/repos/{_GH_OWNER}/{_GH_REPO}/contents'
+```
+
+**API endpoints used:**
+
+<CodeGroup>
+```bash Get file (check if exists)
+GET /repos/{owner}/{repo}/contents/static/uploads/{filename}
+Authorization: token ghp_...
+```
+
+```bash Create/update file
+PUT /repos/{owner}/{repo}/contents/static/uploads/{filename}
+Authorization: token ghp_...
+Content-Type: application/json
+
+{
+  "message": "upload: filename",
+  "content": "base64-encoded-content",
+  "branch": "main",
+  "sha": "abc123"  // Only for updates
+}
+```
+
+```bash Delete file
+DELETE /repos/{owner}/{repo}/contents/static/uploads/{filename}
+Authorization: token ghp_...
+Content-Type: application/json
+
+{
+  "message": "delete: static/uploads/filename",
+  "sha": "abc123",
+  "branch": "main"
+}
+```
+</CodeGroup>
+
+## Troubleshooting
+
+### "GitHub token yetkilerini kontrol edin"
+
+This error appears when:
+- `GITHUB_TOKEN` is invalid or expired
+- Token lacks `repo` or `public_repo` permission
+- Repository name is incorrect
+
+**Solution:**
+1. Regenerate token with correct permissions
+2. Verify repository owner and name in `app.py`
+3. Check token in environment variables
+
+### "Vercel ortamında görsel yüklemek için GITHUB_TOKEN gereklidir!"
+
+This appears when deploying to Vercel without `GITHUB_TOKEN`.
+
+**Solution:**
+1. Add `GITHUB_TOKEN` to Vercel environment variables
+2. Redeploy the application
+
+### File upload succeeds but image doesn't load
+
+Check the image URL in your database:
+
+```sql
+SELECT photo_url FROM team_member WHERE id = 1;
+```
+
+The URL should be:
+```
+https://raw.githubusercontent.com/demirarif/KYA-Hukuk/main/static/uploads/...
+```
+
+Not:
+```
+/static/uploads/...  (local path, won't work on Vercel)
+```
+
+### Rate limiting
+
+GitHub API allows:
+- **5,000 requests/hour** (authenticated)
+- **60 requests/hour** (unauthenticated)
+
+With `GITHUB_TOKEN`, you have plenty of quota for normal usage.

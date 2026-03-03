@@ -1,80 +1,231 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quickstart
+description: Get the KYA Hukuk website running locally in under 5 minutes with this step-by-step guide.
 ---
 
-## Get started in three steps
+This guide will help you set up the development environment and run the Flask application locally using SQLite.
 
-Get your documentation site running locally and make your first customization.
+## Prerequisites
 
-### Step 1: Set up your local environment
+Before you begin, ensure you have:
 
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
+- Python 3.8 or higher
+- Git
+- A code editor (VS Code recommended)
 
-### Step 2: Deploy your changes
+## Installation
 
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
+<Steps>
+  <Step title="Clone the repository">
+    Clone the source code to your local machine:
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
+    ```bash
+    git clone <repository-url>
+    cd KYA-Hukuk
+    ```
+  </Step>
 
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
+  <Step title="Create virtual environment">
+    Create and activate a Python virtual environment:
 
-### Step 3: Go live
+    <CodeGroup>
+      ```bash macOS/Linux
+      python3 -m venv venv
+      source venv/bin/activate
+      ```
 
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
+      ```bash Windows
+      python -m venv venv
+      venv\Scripts\activate
+      ```
+    </CodeGroup>
+
+    Your terminal prompt should now show `(venv)` prefix.
+  </Step>
+
+  <Step title="Install dependencies">
+    Install all required packages from `requirements.txt:1`:
+
+    ```bash
+    pip install -r requirements.txt
+    ```
+
+    This installs Flask 3.0.3, SQLAlchemy, Flask-Login, and all other dependencies.
+  </Step>
+
+  <Step title="Configure environment variables">
+    Copy the example environment file and configure it:
+
+    ```bash
+    cp .env.example .env
+    ```
+
+    Edit `.env` and set at minimum:
+
+    ```bash .env
+    # Generate a secret key
+    SECRET_KEY=your-secret-key-here
+
+    # Admin credentials (required)
+    ADMIN_USERNAME=admin
+    ADMIN_PASSWORD=your-strong-password
+    ```
+
+    <Note>
+      Generate a secure SECRET_KEY with: `python3 -c "import secrets; print(secrets.token_hex(32))"`
+    </Note>
+
+    <Info>
+      The `DATABASE_URL` is optional for local development. If not set, the app will automatically use SQLite at `database/kya.db` (see config.py:12).
+    </Info>
+  </Step>
+
+  <Step title="Initialize the database">
+    The database is automatically initialized when you first run the app (app.py:974). The `init_db()` function:
+
+    - Creates all tables from models (app.py:737)
+    - Creates admin users from environment variables (app.py:740)
+    - Seeds default data including:
+      - Site settings (app.py:769)
+      - Hero sections for all pages (app.py:838)
+      - Sample team members (app.py:862)
+      - Practice areas (app.py:886)
+      - Example articles (app.py:904)
+
+    <Warning>
+      Users are synchronized from environment variables on every startup (app.py:748). Users not defined in `.env` will be removed from the database.
+    </Warning>
+  </Step>
+
+  <Step title="Run the development server">
+    Start the Flask development server:
+
+    ```bash
+    python app.py
+    ```
+
+    The application will start on `http://localhost:5000` (app.py:984).
+
+    You should see output like:
+
+    ```
+    [config] DB URL bulunamadı, SQLite kullanılıyor.
+    ✓ Yeni kullanıcı oluşturuldu: admin
+    ✓ Kullanıcılar senkronize: ['admin']
+    ✓ Veritabanı ve varsayılan veriler hazır.
+     * Running on http://127.0.0.1:5000
+    ```
+  </Step>
+</Steps>
+
+## Verify the installation
+
+Once the server is running:
+
+1. **Visit the homepage**: Open `http://localhost:5000` to see the public site
+2. **Access the admin panel**: Navigate to `http://localhost:5000/admin/login`
+3. **Login**: Use the credentials from your `.env` file
+4. **Check the dashboard**: You should see statistics and sample content
+
+## Project structure
+
+The application follows this structure:
+
+```
+.
+├── app.py              # Main Flask application (985 lines)
+├── config.py           # Configuration and database setup
+├── models.py           # SQLAlchemy models
+├── requirements.txt    # Python dependencies
+├── .env                # Environment variables (not in Git)
+├── api/
+│   └── index.py       # Vercel serverless entry point
+├── templates/          # Jinja2 templates
+│   ├── admin/         # Admin panel templates
+│   └── *.html         # Public page templates
+├── static/            # CSS, JavaScript, uploads
+├── Assets/            # Logo and hero images
+├── database/          # SQLite database (local only)
+└── vercel.json        # Vercel deployment config
+```
+
+## Configuration details
+
+### Database selection
+
+The `config.py:46` file implements automatic database URL selection:
+
+1. Checks `DATABASE_URL` (manual override)
+2. Falls back to `DATABASE_URL_UNPOOLED` (Neon serverless)
+3. Falls back to `POSTGRES_URL` (Neon pooled)
+4. Falls back to `POSTGRES_URL_NO_SSL` (Neon without SSL)
+5. Defaults to SQLite at `/tmp/kya.db` (Vercel) or `database/kya.db` (local)
+
+### Connection pooling
+
+For PostgreSQL, the app uses optimized connection pooling (config.py:72):
+
+```python
+SQLALCHEMY_ENGINE_OPTIONS = {
+    'pool_size': 1,          # Single connection for serverless
+    'max_overflow': 2,       # Allow 2 overflow connections
+    'pool_timeout': 10,      # Wait 10s for connection
+    'pool_recycle': 300,     # Recycle connections after 5 min
+    'pool_pre_ping': True,   # Check connection health
+}
+```
+
+### Session management
+
+Admin sessions have a 3-hour lifetime (config.py:113):
+
+```python
+PERMANENT_SESSION_LIFETIME = timedelta(hours=3)
+SESSION_REFRESH_EACH_REQUEST = False
+```
 
 ## Next steps
 
-Now that you have your docs running, explore these key features:
-
 <CardGroup cols={2}>
+  <Card title="Explore the admin panel" icon="gauge-high">
+    Add team members, create articles, and customize practice areas through the web interface
+  </Card>
 
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
+  <Card title="Deploy to production" icon="cloud" href="/deployment">
+    Learn how to deploy to Vercel with PostgreSQL and GitHub image storage
+  </Card>
 </CardGroup>
 
-<Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
-</Note>
+## Troubleshooting
+
+### Import errors
+
+If you see import errors, ensure your virtual environment is activated and all dependencies are installed:
+
+```bash
+pip install -r requirements.txt
+```
+
+### Database initialization fails
+
+If automatic initialization fails, you can trigger it manually:
+
+1. Start the server
+2. Visit `http://localhost:5000/setup?key=YOUR_SETUP_KEY`
+3. The `SETUP_KEY` must match the value in your `.env` file (app.py:953)
+
+### Port already in use
+
+If port 5000 is busy, specify a different port:
+
+```python
+app.run(debug=True, port=5001)
+```
+
+### Admin login fails
+
+Verify your credentials in `.env` match the User table. The app syncs users on startup (app.py:756):
+
+```bash
+✓ Kullanıcılar senkronize: ['admin', 'user2']
+```

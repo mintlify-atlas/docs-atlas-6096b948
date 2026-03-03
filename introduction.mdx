@@ -1,0 +1,124 @@
+---
+title: Introduction
+description: Welcome to KYA Hukuk & Danışmanlık documentation - a modern Flask-based law firm website with admin dashboard and content management.
+---
+
+KYA Hukuk & Danışmanlık is a professional law firm website built with Flask, featuring a complete content management system and admin dashboard. The platform enables lawyers to manage their practice areas, team profiles, articles, and client communications.
+
+## Overview
+
+This Flask application provides a full-featured website for a law firm with both public-facing pages and a secure admin panel. The architecture supports flexible deployment on Vercel with PostgreSQL (Neon) or local development with SQLite.
+
+## Key features
+
+<CardGroup cols={2}>
+  <Card title="Admin dashboard" icon="gauge-high">
+    Secure authentication with Flask-Login, session management, and role-based access control for multiple users
+  </Card>
+  
+  <Card title="Team management" icon="users">
+    Add and manage team member profiles with photos, roles, bios, and LinkedIn integration
+  </Card>
+  
+  <Card title="Content system" icon="newspaper">
+    Blog/article management with drafts, publishing workflow, and SEO-friendly slugs
+  </Card>
+  
+  <Card title="Practice areas" icon="briefcase">
+    Customizable practice areas with Font Awesome icons, descriptions, and optional images
+  </Card>
+  
+  <Card title="Contact management" icon="envelope">
+    Contact form with message tracking, read/unread status, and IP logging
+  </Card>
+  
+  <Card title="Hero sections" icon="image">
+    Per-page hero banners with custom titles, subtitles, and background images
+  </Card>
+  
+  <Card title="GitHub storage" icon="github">
+    Image uploads directly to GitHub repository for persistent storage on Vercel
+  </Card>
+  
+  <Card title="Database flexibility" icon="database">
+    PostgreSQL for production (Neon/Supabase) or SQLite for local development
+  </Card>
+</CardGroup>
+
+## Architecture
+
+The application is structured as a monolithic Flask app with the following components:
+
+- **Flask 3.0.3** - Web framework with Jinja2 templating
+- **SQLAlchemy** - ORM with support for PostgreSQL and SQLite
+- **Flask-Login** - User session management with 3-hour timeout
+- **Flask-WTF** - CSRF protection for forms
+- **Werkzeug** - Password hashing and secure file handling
+- **Pillow** - Image processing for uploads
+- **Gunicorn** - Production WSGI server
+
+## Database models
+
+The application defines seven core models in `models.py:1`:
+
+- **User** - Admin users with password hashing
+- **SiteSetting** - Key-value store for site configuration
+- **HeroSection** - Per-page hero banner content
+- **TeamMember** - Lawyer profiles with ordering
+- **PracticeArea** - Service offerings with icons
+- **Article** - Blog posts with publish/draft workflow
+- **ContactMessage** - Client inquiries with read tracking
+
+## Get started
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Clone the repository and run the site locally in under 5 minutes
+  </Card>
+  
+  <Card title="Deployment" icon="cloud" href="/deployment">
+    Deploy to Vercel with PostgreSQL database and GitHub image storage
+  </Card>
+</CardGroup>
+
+## Technology stack
+
+From `requirements.txt:1`, the application uses:
+
+```txt
+Flask==3.0.3
+Flask-SQLAlchemy==3.1.1
+Flask-Login==0.6.3
+Flask-WTF==1.2.1
+Werkzeug==3.0.3
+Pillow==10.4.0
+python-dotenv==1.0.1
+gunicorn==22.0.0
+psycopg2-binary==2.9.9
+requests==2.32.3
+```
+
+## Public routes
+
+The application provides these public pages defined in `app.py:251`:
+
+- `/` - Homepage with featured practice areas and latest articles
+- `/hakkimizda` - About page with firm information
+- `/ekibimiz` - Team page with lawyer profiles
+- `/faaliyet` - Practice areas page
+- `/makaleler` - Articles/blog listing
+- `/makaleler/<slug>` - Individual article view
+- `/iletisim` - Contact page with form
+
+## Admin features
+
+Secure admin panel at `/admin` with:
+
+- Dashboard with statistics (app.py:364)
+- Team member CRUD operations (app.py:379)
+- Article management with drafts (app.py:444)
+- Practice area bulk editor (app.py:527)
+- Hero section image manager (app.py:567)
+- Site settings configuration (app.py:603)
+- Contact message inbox (app.py:674)
+- Password change (app.py:651)

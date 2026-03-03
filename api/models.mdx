@@ -1,0 +1,714 @@
+---
+title: Models
+description: Database models with fields, types, and relationships
+---
+
+## Overview
+
+KYA Hukuk & Danışmanlık uses SQLAlchemy ORM with support for both PostgreSQL (production) and SQLite (development). All models are defined in `models.py` and use `datetime.utcnow` for timestamps.
+
+---
+
+## User
+
+**Table name**: `user`
+
+**Purpose**: Admin authentication and authorization
+
+**Inherits**: `UserMixin`, `db.Model`
+
+### Fields
+
+<ParamField path="id" type="Integer" required>
+  Primary key
+</ParamField>
+
+<ParamField path="username" type="String(80)" required>
+  Unique username for login
+  
+  **Constraints**: Unique, not nullable
+</ParamField>
+
+<ParamField path="email" type="String(120)">
+  User email address (optional)
+  
+  **Constraints**: Unique, nullable
+</ParamField>
+
+<ParamField path="password_hash" type="String(256)" required>
+  Hashed password using Werkzeug's `generate_password_hash`
+  
+  **Security**: Never stores plain-text passwords
+</ParamField>
+
+<ParamField path="is_active" type="Boolean" default="True">
+  Whether user can log in
+  
+  **Default**: True
+</ParamField>
+
+<ParamField path="created_at" type="DateTime" default="utcnow">
+  Account creation timestamp
+  
+  **Default**: `datetime.utcnow`
+</ParamField>
+
+### Methods
+
+<ResponseField name="set_password(password)">
+  Hashes and stores password
+  
+  **Parameters**:
+  - `password` (string): Plain-text password
+  
+  **Implementation**: Uses Werkzeug's `generate_password_hash`
+  
+  **Source**: `models.py:18-19`
+</ResponseField>
+
+<ResponseField name="check_password(password)">
+  Verifies password against stored hash
+  
+  **Parameters**:
+  - `password` (string): Plain-text password to verify
+  
+  **Returns**: Boolean
+  
+  **Implementation**: Uses Werkzeug's `check_password_hash`
+  
+  **Source**: `models.py:21-22`
+</ResponseField>
+
+### Example usage
+
+```python
+# Create user
+user = User(username='admin', is_active=True)
+user.set_password('secure_password')
+db.session.add(user)
+db.session.commit()
+
+# Verify password
+if user.check_password('password_attempt'):
+    login_user(user)
+```
+
+---
+
+## SiteSetting
+
+**Table name**: `site_setting`
+
+**Purpose**: Key-value store for site-wide configuration
+
+### Fields
+
+<ParamField path="id" type="Integer" required>
+  Primary key
+</ParamField>
+
+<ParamField path="key" type="String(100)" required>
+  Setting identifier (e.g., `contact_email`, `logo_url`)
+  
+  **Constraints**: Unique, not nullable
+</ParamField>
+
+<ParamField path="value" type="Text">
+  Setting value (string content)
+  
+  **Constraints**: Nullable
+</ParamField>
+
+<ParamField path="label" type="String(200)">
+  Human-readable label for admin panel
+  
+  **Constraints**: Nullable
+</ParamField>
+
+<ParamField path="type" type="String(30)" default="text">
+  Input type hint for forms
+  
+  **Default**: `text`
+  
+  **Common values**: `text`, `textarea`, `image`, `email`, `phone`
+</ParamField>
+
+### Class methods
+
+<ResponseField name="get(key, default=None)">
+  Retrieves setting value by key
+  
+  **Parameters**:
+  - `key` (string): Setting identifier
+  - `default` (any): Fallback value if not found
+  
+  **Returns**: Setting value or default
+  
+  **Source**: `models.py:36-39`
+  
+  ```python
+  email = SiteSetting.get('contact_email', 'info@example.com')
+  ```
+</ResponseField>
+
+<ResponseField name="set(key, value)">
+  Creates or updates setting
+  
+  **Parameters**:
+  - `key` (string): Setting identifier
+  - `value` (string): New value
+  
+  **Behavior**:
+  - Updates existing setting if key exists
+  - Creates new setting if key doesn't exist
+  - Commits to database automatically
+  
+  **Source**: `models.py:41-49`
+  
+  ```python
+  SiteSetting.set('contact_phone', '+90 312 123 45 67')
+  ```
+</ResponseField>
+
+### Common settings keys
+
+- `contact_address`: Physical office address
+- `contact_phone`: Phone number
+- `contact_email`: Email address
+- `contact_hours`: Business hours
+- `google_maps_embed`: Google Maps embed URL
+- `whatsapp_number`: WhatsApp number with country code
+- `about_short`: Short description
+- `logo_url`: Color logo for light backgrounds
+- `logo_white_url`: White logo for dark backgrounds
+- `footer_text`: Copyright text
+- `seo_desc_*`: Page-specific SEO meta descriptions
+
+---
+
+## HeroSection
+
+**Table name**: `hero_section`
+
+**Purpose**: Hero banner content for each page
+
+### Fields
+
+<ParamField path="id" type="Integer" required>
+  Primary key
+</ParamField>
+
+<ParamField path="page" type="String(50)" required>
+  Page identifier (e.g., `index`, `hakkimizda`, `ekibimiz`)
+  
+  **Constraints**: Unique, not nullable
+</ParamField>
+
+<ParamField path="title" type="String(200)">
+  Hero heading text
+  
+  **Constraints**: Nullable
+</ParamField>
+
+<ParamField path="subtitle" type="String(300)">
+  Hero subheading text
+  
+  **Constraints**: Nullable
+</ParamField>
+
+<ParamField path="image_url" type="String(500)">
+  Hero background image URL
+  
+  **Supports**:
+  - Local paths: `/static/uploads/...`
+  - GitHub URLs: `https://raw.githubusercontent.com/...`
+  - External URLs: `https://images.unsplash.com/...`
+  
+  **Constraints**: Nullable
+</ParamField>
+
+### Example usage
+
+```python
+# Get hero for specific page
+hero = HeroSection.query.filter_by(page='index').first()
+
+# Create new hero
+hero = HeroSection(
+    page='faaliyet',
+    title='Çalışma Alanları',
+    subtitle='Başlıca Uzmanlık Alanlarımız',
+    image_url='https://images.unsplash.com/photo-1589994965851-a8f479c573a9'
+)
+db.session.add(hero)
+db.session.commit()
+```
+
+---
+
+## TeamMember
+
+**Table name**: `team_member`
+
+**Purpose**: Law firm team members (lawyers)
+
+### Fields
+
+<ParamField path="id" type="Integer" required>
+  Primary key
+</ParamField>
+
+<ParamField path="name" type="String(150)" required>
+  Full name (e.g., "Av. Mehmet Emre Yiğit")
+  
+  **Constraints**: Not nullable
+</ParamField>
+
+<ParamField path="role" type="String(150)">
+  Position or title (e.g., "Kurucu Ortak")
+  
+  **Constraints**: Nullable
+</ParamField>
+
+<ParamField path="bio" type="Text">
+  Biography or description
+  
+  **Constraints**: Nullable
+</ParamField>
+
+<ParamField path="linkedin_url" type="String(300)">
+  LinkedIn profile URL
+  
+  **Constraints**: Nullable
+</ParamField>
+
+<ParamField path="photo_url" type="String(500)">
+  Profile photo URL
+  
+  **Storage options**:
+  - GitHub: `https://raw.githubusercontent.com/...`
+  - Local: `/static/uploads/...`
+  - External: Any public URL
+  
+  **Constraints**: Nullable
+</ParamField>
+
+<ParamField path="order_index" type="Integer" default="0">
+  Display order (lower numbers appear first)
+  
+  **Default**: 0
+</ParamField>
+
+<ParamField path="is_active" type="Boolean" default="True">
+  Whether member appears on public site
+  
+  **Default**: True
+</ParamField>
+
+<ParamField path="created_at" type="DateTime" default="utcnow">
+  Record creation timestamp
+  
+  **Default**: `datetime.utcnow`
+</ParamField>
+
+### Example query
+
+```python
+# Get all active team members in display order
+team = TeamMember.query\
+    .filter_by(is_active=True)\
+    .order_by(TeamMember.order_index)\
+    .all()
+```
+
+---
+
+## PracticeArea
+
+**Table name**: `practice_area`
+
+**Purpose**: Legal practice areas (services offered)
+
+### Fields
+
+<ParamField path="id" type="Integer" required>
+  Primary key
+</ParamField>
+
+<ParamField path="title" type="String(150)" required>
+  Practice area name (e.g., "Ticaret ve Şirketler Hukuku")
+  
+  **Constraints**: Not nullable
+</ParamField>
+
+<ParamField path="description" type="Text">
+  Detailed description of services
+  
+  **Constraints**: Nullable
+</ParamField>
+
+<ParamField path="icon" type="String(80)" default="fas fa-gavel">
+  Font Awesome icon class
+  
+  **Default**: `fas fa-gavel`
+  
+  **Examples**:
+  - `fas fa-briefcase` (Business law)
+  - `fas fa-landmark` (Administrative law)
+  - `fas fa-file-signature` (Contracts)
+</ParamField>
+
+<ParamField path="image_url" type="String(500)">
+  Practice area image/illustration
+  
+  **Constraints**: Nullable
+  
+  **Note**: Added via migration in `app.py:808-819`
+</ParamField>
+
+<ParamField path="order_index" type="Integer" default="0">
+  Display order
+  
+  **Default**: 0
+</ParamField>
+
+<ParamField path="is_active" type="Boolean" default="True">
+  Whether area appears on public site
+  
+  **Default**: True
+</ParamField>
+
+### Example usage
+
+```python
+# Get active practice areas for homepage (limit 6)
+areas = PracticeArea.query\
+    .filter_by(is_active=True)\
+    .order_by(PracticeArea.order_index)\
+    .limit(6)\
+    .all()
+
+# Create new practice area
+area = PracticeArea(
+    title='Fikri Mülkiyet Hukuku',
+    description='Marka, patent, tasarım tescili...',
+    icon='fas fa-lightbulb',
+    order_index=5,
+    is_active=True
+)
+db.session.add(area)
+db.session.commit()
+```
+
+---
+
+## ContactMessage
+
+**Table name**: `contact_message`
+
+**Purpose**: Contact form submissions from public visitors
+
+### Fields
+
+<ParamField path="id" type="Integer" required>
+  Primary key
+</ParamField>
+
+<ParamField path="name" type="String(150)" required>
+  Sender's full name
+  
+  **Constraints**: Not nullable
+  
+  **Validation**: Minimum 2 characters
+</ParamField>
+
+<ParamField path="email" type="String(200)" required>
+  Sender's email address
+  
+  **Constraints**: Not nullable
+  
+  **Validation**: Must match email regex pattern
+</ParamField>
+
+<ParamField path="subject" type="String(300)">
+  Message subject (optional)
+  
+  **Constraints**: Nullable
+</ParamField>
+
+<ParamField path="message" type="Text" required>
+  Message content
+  
+  **Constraints**: Not nullable
+  
+  **Validation**: Minimum 10 characters
+</ParamField>
+
+<ParamField path="is_read" type="Boolean" default="False">
+  Whether admin has read the message
+  
+  **Default**: False
+</ParamField>
+
+<ParamField path="ip_address" type="String(45)">
+  Sender's IP address (IPv4 or IPv6)
+  
+  **Constraints**: Nullable
+  
+  **Source**: `request.remote_addr`
+</ParamField>
+
+<ParamField path="created_at" type="DateTime" default="utcnow">
+  Submission timestamp
+  
+  **Default**: `datetime.utcnow`
+</ParamField>
+
+### Example query
+
+```python
+# Get all unread messages
+unread = ContactMessage.query\
+    .filter_by(is_read=False)\
+    .order_by(ContactMessage.created_at.desc())\
+    .all()
+
+# Mark message as read
+msg = ContactMessage.query.get(message_id)
+msg.is_read = True
+db.session.commit()
+```
+
+---
+
+## Article
+
+**Table name**: `article`
+
+**Purpose**: Blog articles and legal content
+
+### Fields
+
+<ParamField path="id" type="Integer" required>
+  Primary key
+</ParamField>
+
+<ParamField path="title" type="String(300)" required>
+  Article title
+  
+  **Constraints**: Not nullable
+</ParamField>
+
+<ParamField path="slug" type="String(300)" required>
+  URL-friendly identifier (auto-generated from title)
+  
+  **Constraints**: Unique, not nullable
+  
+  **Generation**: Turkish character normalization, lowercase, hyphens
+  
+  **Example**: "Vergi Anlaşmazlığı Kavramları" → `vergi-anlasmazligi-kavramlari`
+</ParamField>
+
+<ParamField path="summary" type="Text">
+  Article excerpt/summary
+  
+  **Constraints**: Nullable
+  
+  **Usage**: Displayed in article listings
+</ParamField>
+
+<ParamField path="content" type="Text">
+  Full article content (HTML)
+  
+  **Constraints**: Nullable
+  
+  **Format**: Rich HTML (supports formatting, links, images)
+</ParamField>
+
+<ParamField path="author" type="String(150)">
+  Author name (e.g., "KYA Hukuk")
+  
+  **Constraints**: Nullable
+</ParamField>
+
+<ParamField path="cover_url" type="String(500)">
+  Article cover image URL
+  
+  **Constraints**: Nullable
+  
+  **Storage**: GitHub or external URL
+</ParamField>
+
+<ParamField path="is_published" type="Boolean" default="False">
+  Publication status
+  
+  **Default**: False (draft)
+  
+  **Behavior**:
+  - `True`: Visible on public site
+  - `False`: Draft, only visible in admin
+</ParamField>
+
+<ParamField path="created_at" type="DateTime" default="utcnow">
+  Record creation timestamp
+  
+  **Default**: `datetime.utcnow`
+</ParamField>
+
+<ParamField path="published_at" type="DateTime">
+  Publication timestamp
+  
+  **Constraints**: Nullable
+  
+  **Behavior**:
+  - Set to current time when article first published
+  - Remains unchanged on subsequent edits
+  - Used for "latest articles" ordering
+</ParamField>
+
+### Example usage
+
+```python
+# Get published articles for homepage (latest 3)
+articles = Article.query\
+    .filter_by(is_published=True)\
+    .order_by(Article.published_at.desc())\
+    .limit(3)\
+    .all()
+
+# Create new article
+article = Article(
+    title='Proforma Dolandırıcılığı',
+    slug='proforma-dolandiricilik',
+    summary='Uluslararası ticarette sıkça rastlanan...',
+    content='<p>Proforma dolandırıcılığı...</p>',
+    author='KYA Hukuk',
+    is_published=True,
+    published_at=datetime.utcnow()
+)
+db.session.add(article)
+db.session.commit()
+
+# Get article by slug for detail page
+article = Article.query\
+    .filter_by(slug='proforma-dolandiricilik', is_published=True)\
+    .first_or_404()
+```
+
+---
+
+## Database configuration
+
+### Connection setup
+
+**Source**: `config.py`
+
+<Tabs>
+  <Tab title="PostgreSQL (Production)">
+    **URL sources** (priority order):
+    1. `DATABASE_URL`
+    2. `DATABASE_URL_UNPOOLED` (Neon serverless)
+    3. `POSTGRES_URL`
+    4. `POSTGRES_URL_NO_SSL`
+    
+    **Driver**: `postgresql+psycopg2`
+    
+    **Connection pooling**:
+    ```python
+    SQLALCHEMY_ENGINE_OPTIONS = {
+        'pool_size': 1,           # Single connection for serverless
+        'max_overflow': 2,        # Allow 2 additional connections
+        'pool_timeout': 10,       # 10s connection timeout
+        'pool_recycle': 300,      # Recycle connections every 5 min
+        'pool_pre_ping': True,    # Detect stale connections
+    }
+    ```
+    
+    **SSL**: Enabled via `sslmode=require` in connection string
+  </Tab>
+  
+  <Tab title="SQLite (Development)">
+    **Path**: 
+    - Vercel: `/tmp/kya.db` (ephemeral)
+    - Local: `{BASE_DIR}/database/kya.db`
+    
+    **Connection string**: `sqlite:///{path}`
+    
+    **Pooling**: Disabled (SQLite default)
+    
+    **Note**: Vercel SQLite is temporary and resets between deployments. Production must use PostgreSQL.
+  </Tab>
+</Tabs>
+
+### Initialization
+
+**Source**: `app.py:735-928`
+
+The `init_db()` function:
+
+1. Creates all tables with `db.create_all()`
+2. Syncs admin users from environment variables
+3. Seeds default settings (contact info, logos, SEO)
+4. Seeds default hero sections for all pages
+5. Creates sample team members if table empty
+6. Creates sample practice areas if table empty
+7. Creates sample articles if table empty
+8. Runs migrations (e.g., adds `image_url` to practice areas)
+
+**Automatic execution**: Runs on app startup (line 974)
+
+**Manual trigger**: `/setup?key={SETUP_KEY}` endpoint
+
+### Migrations
+
+**Pattern**: Inline migrations in `init_db()`
+
+**Example** (`app.py:808-819`):
+```python
+from sqlalchemy import text, inspect
+
+inspector = inspect(db.engine)
+cols = [c['name'] for c in inspector.get_columns('practice_area')]
+if 'image_url' not in cols:
+    with db.engine.connect() as conn:
+        conn.execute(text('ALTER TABLE practice_area ADD COLUMN image_url VARCHAR(500)'))
+        conn.commit()
+```
+
+---
+
+## Relationships
+
+### Current schema
+
+The application uses a **flat schema** with no foreign key relationships between models:
+
+- `User` ↔ No relationships (isolated authentication)
+- `Article` ↔ No author FK (stores author name as string)
+- `TeamMember` ↔ No relationships (standalone)
+- `PracticeArea` ↔ No relationships (standalone)
+- `ContactMessage` ↔ No relationships (standalone)
+- `HeroSection` ↔ No relationships (one-to-one with page names)
+- `SiteSetting` ↔ No relationships (key-value store)
+
+### Future relationship possibilities
+
+Potential enhancements:
+
+```python
+# Article → User (author FK)
+class Article(db.Model):
+    author_id = db.Column(db.Integer, db.ForeignKey('user.id'))
+    author = db.relationship('User', backref='articles')
+
+# Article → PracticeArea (many-to-many)
+article_areas = db.Table('article_areas',
+    db.Column('article_id', db.Integer, db.ForeignKey('article.id')),
+    db.Column('area_id', db.Integer, db.ForeignKey('practice_area.id'))
+)
+
+class Article(db.Model):
+    practice_areas = db.relationship('PracticeArea',
+        secondary=article_areas,
+        backref='articles')
+```

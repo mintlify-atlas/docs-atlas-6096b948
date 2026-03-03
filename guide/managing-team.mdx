@@ -1,0 +1,191 @@
+---
+title: Managing team members
+description: Add, edit, and delete law firm team members with photos and professional details
+---
+
+Manage your law firm's team member profiles, including lawyers, partners, and consultants.
+
+## Accessing team management
+
+Navigate to:
+- From admin sidebar: Click "Ekip"
+- Direct URL: `/admin/ekip`
+
+You'll see a list of all team members ordered by their `order_index` (app.py:379-383).
+
+## Adding a new team member
+
+<Steps>
+  <Step title="Click 'Yeni Üye' button">
+    From the team list page, click the "Yeni Üye" (New Member) button to access the form at `/admin/ekip/yeni`.
+  </Step>
+  
+  <Step title="Fill out required information">
+    The form includes these fields:
+    
+    **Required fields:**
+    - **Ad Soyad** (Name): Full name of the team member
+    
+    **Optional fields:**
+    - **Ünvan / Rol** (Title/Role): e.g., "Av." (Attorney), "Kurucu Ortak" (Founding Partner)
+    - **Biyografi** (Bio): Professional biography and background
+    - **LinkedIn URL**: Link to their LinkedIn profile
+    - **Fotoğraf Yükle** (Photo Upload): Upload a photo file (max 8MB)
+    - **Fotoğraf URL'si** (Photo URL): Or provide an external image URL
+    - **Sıra No** (Order Index): Display order (lower = appears first)
+    - **Aktif** (Active): Check to display on public site
+  </Step>
+  
+  <Step title="Upload or link a photo">
+    You have two options:
+    
+    1. **Upload a file**: Select a JPG, PNG, or WEBP file (recommended: square aspect ratio)
+    2. **Provide URL**: Enter an external image URL (e.g., from Unsplash)
+    
+    If you upload a file, it takes precedence over the URL field.
+  </Step>
+  
+  <Step title="Save the member">
+    Click "Kaydet" (Save) to create the team member. The form submits to `/admin/ekip/yeni` (app.py:386-404).
+  </Step>
+</Steps>
+
+### Form field reference
+
+Based on the team form template (team_form.html:14-74):
+
+| Field | Name | Type | Required | Notes |
+|-------|------|------|----------|-------|
+| Name | `name` | text | Yes | Full name |
+| Role | `role` | text | No | Title or position |
+| Bio | `bio` | textarea | No | Professional background |
+| Photo Upload | `photo` | file | No | Max 8MB, image formats |
+| Photo URL | `photo_url_ext` | url | No | External image URL |
+| LinkedIn | `linkedin_url` | url | No | Full LinkedIn profile URL |
+| Order Index | `order_index` | number | No | Default: 0 |
+| Active | `is_active` | checkbox | No | Default: checked |
+
+## Editing a team member
+
+<Steps>
+  <Step title="Navigate to team list">
+    Go to `/admin/ekip` to see all team members.
+  </Step>
+  
+  <Step title="Click edit button">
+    Click the edit button next to the member you want to update. This takes you to `/admin/ekip/<id>/duzenle`.
+  </Step>
+  
+  <Step title="Update fields">
+    Modify any fields. The form is pre-populated with existing data.
+    
+    **For photos:**
+    - Upload a new file to replace the existing photo
+    - Change the URL field to use a different external image
+    - Leave both blank to keep the current photo
+  </Step>
+  
+  <Step title="Save changes">
+    Click "Kaydet" to update. The old photo is automatically deleted from GitHub if you upload a new one (app.py:407-428).
+  </Step>
+</Steps>
+
+### Photo replacement logic
+
+From app.py:412-422:
+
+1. If a new file is uploaded:
+   - Old photo is deleted from GitHub storage
+   - New photo URL replaces the old one
+2. If URL field is changed:
+   - Old photo is deleted from GitHub
+   - New URL is saved
+3. If neither is provided:
+   - Existing photo URL is preserved
+
+## Deleting a team member
+
+<Warning>
+Deleting a team member is permanent and cannot be undone. The team member and their photo will be removed from the database and GitHub storage.
+</Warning>
+
+<Steps>
+  <Step title="Go to team list">
+    Navigate to `/admin/ekip`.
+  </Step>
+  
+  <Step title="Click delete button">
+    Click the delete button next to the member you want to remove.
+  </Step>
+  
+  <Step title="Confirm deletion">
+    Confirm the action in the browser dialog.
+  </Step>
+</Steps>
+
+The delete route at `/admin/ekip/<id>/sil` (app.py:431-439):
+- Deletes the photo from GitHub storage
+- Removes the database record
+- Redirects back to the team list
+
+## Display order
+
+Team members appear on the public site in order of their `order_index` value:
+
+- Members are sorted by `order_index` ascending (app.py:382)
+- Lower numbers appear first
+- Members with the same order_index are sorted by their database ID
+
+**Example:**
+- Order 0: Av. Mehmet Emre Yiğit (appears first)
+- Order 1: Av. Tevfik Keleştemur (appears second)
+- Order 2: Av. Direnç Onat Altay (appears third)
+
+## Active/inactive status
+
+The "Aktif" checkbox controls visibility:
+
+- **Checked (`is_active=True`)**: Member appears on `/ekibimiz` page
+- **Unchecked (`is_active=False`)**: Member hidden from public but preserved in database
+
+Only active members are displayed on the public site (app.py:268).
+
+## Team member model
+
+From models.py:67-81:
+
+```python
+class TeamMember(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(150), nullable=False)
+    role = db.Column(db.String(150), nullable=True)
+    bio = db.Column(db.Text, nullable=True)
+    linkedin_url = db.Column(db.String(300), nullable=True)
+    photo_url = db.Column(db.String(500), nullable=True)
+    order_index = db.Column(db.Integer, default=0)
+    is_active = db.Column(db.Boolean, default=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+```
+
+## Photo upload system
+
+Photos are processed through the `save_upload()` function (app.py:161-201):
+
+1. File is validated for allowed extensions (JPG, PNG, WEBP)
+2. Filename is secured and timestamped
+3. File is uploaded to GitHub repository at `static/uploads/{filename}` if `GITHUB_TOKEN` is set
+4. Returns the raw GitHub URL: `https://raw.githubusercontent.com/...`
+5. In development (no token), saves to local `static/uploads/` folder
+
+<Note>
+Photos with square aspect ratio (1:1) work best for team member profiles. The upload form suggests this with `data-aspect="1"` (team_form.html:36).
+</Note>
+
+## Where team members appear
+
+Active team members are displayed on:
+
+- **Team page** (`/ekibimiz`): Full list with photos, names, roles, bios, and LinkedIn links
+- **Homepage**: May appear if the template includes a team section
+
+Inactive members do not appear anywhere on the public site but remain in the database for future reactivation.

@@ -1,0 +1,253 @@
+---
+title: Managing articles
+description: Create, edit, and publish legal articles with rich text content and cover images
+---
+
+Publish legal articles and blog posts on your law firm website using the built-in article management system.
+
+## Accessing article management
+
+Navigate to:
+- From admin sidebar: Click "Makaleler"
+- Direct URL: `/admin/makaleler`
+
+You'll see all articles listed in reverse chronological order (most recent first) (app.py:444-448).
+
+## Creating a new article
+
+<Steps>
+  <Step title="Click 'Yeni Makale' button">
+    From the articles list, click "Yeni Makale" (New Article) to access the form at `/admin/makaleler/yeni`.
+  </Step>
+  
+  <Step title="Enter article details">
+    Fill out the article form:
+    
+    **Required fields:**
+    - **Makale Başlığı** (Title): Article headline
+    - **İçerik** (Content): Rich text article body
+    
+    **Optional fields:**
+    - **Slug**: Custom URL slug (auto-generated from title if blank)
+    - **Özet** (Summary): Brief description for article listings
+    - **Yazar** (Author): Author name (e.g., "Av. Mehmet Yiğit")
+    - **Kapak Görseli** (Cover Image): Upload file or provide URL
+    - **Yayınla** (Publish): Check to make article public
+  </Step>
+  
+  <Step title="Write content with rich text editor">
+    Use the Quill.js rich text editor to format your article:
+    
+    - Headers (H1, H2, H3)
+    - Bold, italic, underline, strikethrough
+    - Ordered and unordered lists
+    - Blockquotes and code blocks
+    - Links
+    
+    The editor toolbar is located above the content area (article_form.html:91-103).
+  </Step>
+  
+  <Step title="Add a cover image">
+    Choose one method:
+    
+    1. **Upload file**: Select a JPG, PNG, or WEBP (recommended: 16:9 aspect ratio)
+    2. **External URL**: Provide an image URL
+    
+    The cover image appears on article listings and the article detail page.
+  </Step>
+  
+  <Step title="Publish or save as draft">
+    - **Check "Yayınla"**: Article immediately visible on `/makaleler`
+    - **Leave unchecked**: Saved as draft, not visible to public
+    
+    Click "Kaydet" (Save) to submit (app.py:451-479).
+  </Step>
+</Steps>
+
+### Article form fields
+
+Based on article_form.html:22-84:
+
+| Field | Name | Type | Required | Notes |
+|-------|------|------|----------|-------|
+| Title | `title` | text | Yes | Article headline |
+| Slug | `slug` | text | No | Auto-generated if empty |
+| Summary | `summary` | textarea | No | Brief description |
+| Content | `content` | rich text | Yes | HTML from Quill editor |
+| Author | `author` | text | No | Byline name |
+| Cover Upload | `cover` | file | No | Max 8MB, 16:9 ratio recommended |
+| Cover URL | `cover_url_ext` | url | No | External image URL |
+| Published | `is_published` | checkbox | No | Visibility toggle |
+
+## Slug generation
+
+Slugs are URL-friendly identifiers for articles (app.py:130-140):
+
+### Auto-generation
+
+If you leave the slug field blank, it's generated from the title:
+
+1. Convert to lowercase
+2. Replace Turkish characters: ş→s, ı→i, ğ→g, ü→u, ö→o, ç→c
+3. Remove non-alphanumeric characters
+4. Replace spaces/underscores with hyphens
+5. Strip leading/trailing hyphens
+
+**Example:**
+- Title: "Vergi Anlaşmazlığı ve Vergi Uyuşmazlığı Kavramları"
+- Slug: "vergi-anlasmazligi-ve-vergi-uyusmazligi-kavramlari"
+
+### Uniqueness enforcement
+
+If a slug already exists, a counter is appended (app.py:459-462):
+
+- First article: `vergi-anlasmazligi`
+- Duplicate: `vergi-anlasmazligi-1`
+- Next duplicate: `vergi-anlasmazligi-2`
+
+### Custom slugs
+
+You can provide a custom slug:
+- Enter your desired slug in the "Slug" field
+- System still applies the slugify transformation
+- Uniqueness is enforced
+
+<Warning>
+Changing a published article's slug breaks existing links. Only update slugs for unpublished drafts or if you can update external references.
+</Warning>
+
+## Editing an article
+
+<Steps>
+  <Step title="Go to articles list">
+    Navigate to `/admin/makaleler`.
+  </Step>
+  
+  <Step title="Click edit button">
+    Click the edit button next to the article. This opens `/admin/makaleler/<id>/duzenle`.
+  </Step>
+  
+  <Step title="Update fields">
+    Modify any fields. The form is pre-populated with existing data.
+    
+    **Slug updates:**
+    - Custom slug is only applied if different from current slug
+    - Uniqueness check excludes the current article (app.py:490-494)
+  </Step>
+  
+  <Step title="Save changes">
+    Click "Kaydet" to update. Old cover image is deleted if you upload a new one (app.py:482-511).
+  </Step>
+</Steps>
+
+### Publishing logic
+
+From app.py:504-507:
+
+- When you check "Yayınla" on a draft, `published_at` is set to current timestamp
+- Once published, `published_at` doesn't change on subsequent edits
+- Unchecking "Yayınla" hides the article but preserves `published_at`
+
+## Deleting an article
+
+<Warning>
+Deleting an article is permanent. The article, its cover image, and all metadata will be removed.
+</Warning>
+
+<Steps>
+  <Step title="Navigate to articles list">
+    Go to `/admin/makaleler`.
+  </Step>
+  
+  <Step title="Click delete button">
+    Click the delete button next to the article.
+  </Step>
+  
+  <Step title="Confirm deletion">
+    Confirm in the browser dialog.
+  </Step>
+</Steps>
+
+The delete route at `/admin/makaleler/<id>/sil` (app.py:514-522):
+- Deletes cover image from GitHub storage
+- Removes database record
+- Redirects to articles list
+
+## Rich text editor
+
+Article content uses Quill.js rich text editor (article_form.html:89-127):
+
+### Available formatting
+
+- **Headers**: H1, H2, H3
+- **Inline styles**: Bold, italic, underline, strikethrough
+- **Lists**: Ordered (numbered) and bullet lists
+- **Blocks**: Blockquotes and code blocks
+- **Links**: Insert hyperlinks
+- **Clean**: Remove all formatting
+
+### How it works
+
+1. You write in the visual editor
+2. On form submission, Quill converts content to HTML (article_form.html:107-109)
+3. HTML is stored in the `content` field
+4. On edit, HTML is loaded back into Quill
+
+<Note>
+The editor does not support image uploads within content. Use external image URLs in link format if needed.
+</Note>
+
+## Published vs. draft articles
+
+### Published articles
+
+- `is_published = True`
+- Appear on `/makaleler` (articles listing page)
+- Accessible via `/makaleler/<slug>` (article detail page)
+- Sorted by `published_at` date descending (app.py:282)
+- Show on homepage (last 3 articles) (app.py:255)
+
+### Draft articles
+
+- `is_published = False`
+- Only visible in admin panel
+- Not accessible via public URLs (404 error if accessed)
+- Count shown on admin dashboard as "drafts" (app.py:368)
+
+## Article model
+
+From models.py:112-127:
+
+```python
+class Article(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(300), nullable=False)
+    slug = db.Column(db.String(300), unique=True, nullable=False)
+    summary = db.Column(db.Text, nullable=True)
+    content = db.Column(db.Text, nullable=True)
+    author = db.Column(db.String(150), nullable=True)
+    cover_url = db.Column(db.String(500), nullable=True)
+    is_published = db.Column(db.Boolean, default=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    published_at = db.Column(db.DateTime, nullable=True)
+```
+
+## Where articles appear
+
+Published articles are displayed on:
+
+- **Articles listing** (`/makaleler`): All published articles, newest first
+- **Article detail** (`/makaleler/<slug>`): Individual article page with full content
+- **Homepage** (`/`): Last 3 published articles (app.py:255)
+- **Admin dashboard**: Recent 5 articles (all statuses) (app.py:373)
+
+## Cover image specifications
+
+For best results:
+
+- **Aspect ratio**: 16:9 (1.78:1) recommended (article_form.html:58)
+- **Format**: JPG, PNG, or WEBP
+- **Size**: Max 8MB
+- **Resolution**: 1920×1080 or similar
+
+Cover images are automatically processed through the GitHub storage system or saved locally in development.

@@ -1,0 +1,134 @@
+---
+title: Admin login
+description: Learn how to log in to the admin panel, manage sessions, and change your password
+---
+
+The admin panel allows you to manage all aspects of your law firm website. This guide covers authentication and security features.
+
+## Accessing the admin panel
+
+You can access the admin panel at:
+
+```
+https://your-domain.com/admin/login
+```
+
+<Note>
+The old `admin.` subdomain has been deprecated and automatically redirects to `/admin/login` on the main domain.
+</Note>
+
+## Logging in
+
+<Steps>
+  <Step title="Navigate to the login page">
+    Go to `/admin/login` in your browser. You'll see the KYA Hukuk admin login interface.
+  </Step>
+  
+  <Step title="Enter your credentials">
+    The login form requires two fields:
+    - **Username**: Your admin username (defined in environment variables)
+    - **Password**: Your account password
+    
+    Both fields are required and validated on the server side.
+  </Step>
+  
+  <Step title="Submit the form">
+    Click the "Giriş Yap" (Login) button to authenticate. The form is protected by CSRF tokens for security.
+  </Step>
+</Steps>
+
+### Login routes
+
+The login system uses these routes from `app.py`:
+
+- **GET/POST** `/admin/login` - Login page and authentication (app.py:337)
+- **GET** `/admin/logout` - Logout and session termination (app.py:354)
+
+## Session management
+
+Once logged in, your session is managed automatically:
+
+- **Session duration**: 3 hours (configured via `PERMANENT_SESSION_LIFETIME` in app.py:347)
+- **Remember me**: Not enabled by default for security
+- **Auto-redirect**: After login, you're redirected to the dashboard or the page you originally requested
+
+<Warning>
+If you're inactive for 3 hours, you'll be automatically logged out and need to authenticate again.
+</Warning>
+
+### Session security features
+
+- **CSRF protection**: All forms include CSRF tokens to prevent cross-site request forgery
+- **Password hashing**: Passwords are hashed using Werkzeug's security functions (models.py:18-22)
+- **Active user check**: Only active users can log in (app.py:345)
+
+## Changing your password
+
+You can change your password from within the admin panel.
+
+<Steps>
+  <Step title="Navigate to password settings">
+    From the admin sidebar, go to "Şifre Değiştir" or access `/admin/sifre` directly.
+  </Step>
+  
+  <Step title="Fill out the password form">
+    The form requires three fields:
+    - **Current password**: Your existing password for verification
+    - **New password**: Your desired new password (minimum 8 characters)
+    - **Confirm new password**: Re-enter the new password to confirm
+  </Step>
+  
+  <Step title="Submit the changes">
+    Click "Kaydet" to update your password. The system validates:
+    - Current password is correct
+    - New passwords match
+    - Minimum length requirement (8 characters)
+  </Step>
+</Steps>
+
+### Password change route
+
+The password change functionality uses:
+
+- **GET/POST** `/admin/sifre` - Password change form and processing (app.py:651-669)
+
+### Password requirements
+
+- Minimum 8 characters (app.py:662)
+- Must match confirmation field (app.py:660)
+- Old password must be verified before change (app.py:658)
+
+<Note>
+Passwords are never stored in plain text. They're hashed using Werkzeug's `generate_password_hash` function.
+</Note>
+
+## User management
+
+User accounts are managed through environment variables, not the database directly:
+
+- Users are defined in environment variables (`ADMIN_USERNAME`, `ADMIN_PASSWORD`, etc.)
+- Up to 4 users supported (`ADMIN`, `USER2`, `USER3`, `USER4`)
+- Users not in environment variables are automatically removed on deployment (app.py:747-751)
+
+<Warning>
+Do not attempt to create users directly in the database. They will be removed on the next deployment or restart.
+</Warning>
+
+## Troubleshooting
+
+### Can't log in
+
+- Verify your username and password are correct
+- Check that your user account is marked as active (models.py:15)
+- Ensure environment variables are properly configured
+
+### Session expired
+
+If you see "Bu sayfayı görmek için giriş yapmanız gerekiyor" (login required message):
+
+- Your session has expired after 3 hours of inactivity
+- Simply log in again to continue
+
+### Forgot password
+
+Contact your system administrator to reset your password in the environment variables. Passwords cannot be recovered from the database as they are hashed.

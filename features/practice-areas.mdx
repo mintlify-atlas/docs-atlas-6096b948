@@ -1,0 +1,259 @@
+---
+title: Practice areas
+description: Manage legal practice areas with icons, images, and ordering
+---
+
+Define and organize your firm's practice areas at `/admin/alanlar`. Each area includes a title, description, Font Awesome icon, optional image, and display order.
+
+## Practice area model
+
+The `PracticeArea` model includes:
+
+<ParamField path="title" type="string" required>
+  Practice area name (max 150 characters)
+  
+  Example: `Ticaret ve Şirketler Hukuku`
+</ParamField>
+
+<ParamField path="description" type="text">
+  Detailed description of services offered
+</ParamField>
+
+<ParamField path="icon" type="string">
+  Font Awesome 6 class (max 80 characters)
+  
+  Default: `fas fa-gavel`
+  
+  Example: `fas fa-briefcase`, `fas fa-balance-scale`
+</ParamField>
+
+<ParamField path="image_url" type="string">
+  Optional area-specific image (max 500 characters)
+</ParamField>
+
+<ParamField path="order_index" type="integer">
+  Display order (ascending). Default: `0`
+</ParamField>
+
+<ParamField path="is_active" type="boolean">
+  Whether the area appears on the public site. Default: `true`
+</ParamField>
+
+## Bulk edit interface
+
+Unlike team members and articles, practice areas use a **single-page bulk edit** approach:
+
+<Steps>
+  <Step title="View all areas">
+    Navigate to `/admin/alanlar` to see all practice areas in one form.
+  </Step>
+  
+  <Step title="Edit multiple areas">
+    Each area is displayed as a card with editable fields:
+    
+    - **Başlık**: Area title
+    - **İkon**: Font Awesome class
+    - **Açıklama**: Service description
+    - **Alan Görseli**: Image URL or file upload
+    - **Aktif**: Visibility checkbox
+  </Step>
+  
+  <Step title="Add new area">
+    Click **Yeni Alan Ekle** to dynamically insert a new blank area card. JavaScript adds the form fields in-browser.
+    
+    ```javascript
+    // From admin/practice_areas.html:90
+    document.getElementById('addAreaBtn').addEventListener('click', function() {
+      const idx = container.querySelectorAll('input[name="title[]"]').length;
+      // Create new area card
+      div.innerHTML = `...`;
+      container.insertBefore(div, btnRow);
+    });
+    ```
+  </Step>
+  
+  <Step title="Save all changes">
+    Click **Tüm Değişiklikleri Kaydet** to:
+    
+    1. Delete all existing practice areas
+    2. Insert new records for each area in the form
+    3. Preserve image URLs unless replaced
+    
+    ```python
+    # From app.py:538
+    PracticeArea.query.delete()
+    for i, title in enumerate(titles):
+        if not title.strip():
+            continue
+        uploaded = save_upload(image_files[i] if i < len(image_files) else None)
+        area_image = uploaded or (image_urls[i].strip() if i < len(image_urls) else '')
+        area = PracticeArea(title=title.strip(), ...)
+        db.session.add(area)
+    ```
+  </Step>
+</Steps>
+
+<Warning>
+  The save operation replaces **all** practice areas. Ensure your form includes every area you want to keep.
+</Warning>
+
+## Font Awesome icons
+
+<Tabs>
+  <Tab title="Available icons">
+    Use any Font Awesome 6 solid icon:
+    
+    - `fas fa-gavel` — Gavel (default)
+    - `fas fa-briefcase` — Briefcase (business)
+    - `fas fa-balance-scale` — Scales (justice)
+    - `fas fa-landmark` — Government building
+    - `fas fa-users` — People (family law)
+    - `fas fa-file-signature` — Contracts
+    - `fas fa-lightbulb` — Intellectual property
+    
+    Browse the full catalog at [fontawesome.com](https://fontawesome.com/icons).
+  </Tab>
+  
+  <Tab title="Icon format">
+    Use the full class string:
+    
+    ```
+    fa-solid fa-balance-scale
+    ```
+    
+    Not just the icon name. The class is rendered directly in templates:
+    
+    ```html
+    <i class="{{ area.icon }}"></i>
+    ```
+  </Tab>
+</Tabs>
+
+## Area images
+
+Optional images enhance practice area cards:
+
+<Steps>
+  <Step title="Upload new image">
+    Use the **Yeni Görsel Yükle** field to upload a file:
+    
+    - Accepted formats: JPG, PNG, WEBP
+    - Max 8 MB
+    - Uploaded files override existing URLs
+  </Step>
+  
+  <Step title="Use existing URL">
+    The **Alan Görseli — Mevcut URL** field shows the current image (if any):
+    
+    - Edit the URL to change the image source
+    - Clear the field to remove the image entirely
+    - If blank and no file is uploaded, the area will have no image
+  </Step>
+  
+  <Step title="Image priority">
+    ```python
+    # From app.py:549
+    uploaded = save_upload(image_files[i] if i < len(image_files) else None)
+    area_image = uploaded or (image_urls[i].strip() if i < len(image_urls) else '')
+    ```
+    
+    Priority:
+    1. New file upload
+    2. Existing URL field value
+    3. `None` (no image)
+  </Step>
+</Steps>
+
+<Note>
+  Images are displayed as 80px thumbnails in the admin form, with rounded corners and border.
+</Note>
+
+## Ordering and display
+
+Practice areas are ordered by `order_index`:
+
+```python
+# Homepage (app.py:254)
+areas = PracticeArea.query.filter_by(is_active=True).order_by(PracticeArea.order_index).limit(6).all()
+
+# Practice areas page (app.py:275)
+areas = PracticeArea.query.filter_by(is_active=True).order_by(PracticeArea.order_index).all()
+```
+
+<Tabs>
+  <Tab title="Implicit ordering">
+    The order is determined by the **position in the form**, not a separate field:
+    
+    ```python
+    # From app.py:556
+    area = PracticeArea(
+        ...
+        order_index=i,  # Loop index
+        ...
+    )
+    ```
+    
+    To reorder, drag and drop is not available — you must:
+    1. Copy the area's content
+    2. Delete the area
+    3. Click "Add New Area" at the desired position
+    4. Paste content
+  </Tab>
+  
+  <Tab title="Homepage limit">
+    The homepage displays only the **first 6** active areas. The full list appears on `/faaliyet`.
+  </Tab>
+</Tabs>
+
+## Active/inactive areas
+
+The **Aktif** checkbox controls visibility:
+
+```python
+# From app.py:557
+is_active=(str(i) in actives),
+```
+
+- **Checked**: Area appears on homepage and `/faaliyet`
+- **Unchecked**: Area is hidden but remains in database
+
+<Warning>
+  Because the save operation rebuilds all areas, unchecking "Aktif" will exclude the area from the next save. To hide an area temporarily, keep it checked but move it to a high `order_index`.
+</Warning>
+
+## Default practice areas
+
+On initial setup, six default areas are created:
+
+1. **Ticaret ve Şirketler Hukuku** — `fas fa-briefcase`
+2. **Ceza Hukuku** — `fas fa-gavel`
+3. **İdare Hukuku** — `fas fa-landmark`
+4. **Özel Hukuk** — `fas fa-users`
+5. **Sözleşmeler Hukuku** — `fas fa-file-signature`
+6. **Fikri Mülkiyet Hukuku** — `fas fa-lightbulb`
+
+See `init_db()` in app.py:886 for full seed data.
+
+## Public display
+
+Practice areas are shown on:
+
+### Homepage (`/`)
+- First 6 active areas
+- Icon, title, and truncated description
+- Grid layout
+
+### Practice areas page (`/faaliyet`)
+- All active areas
+- Full description
+- Images (if provided)
+- Icon with colored background
+
+```python
+# From app.py:272
+@app.route('/faaliyet')
+def faaliyet():
+    hero = HeroSection.query.filter_by(page='faaliyet').first()
+    areas = PracticeArea.query.filter_by(is_active=True).order_by(PracticeArea.order_index).all()
+    return render_template('faaliyet.html', hero=hero, areas=areas)
+```

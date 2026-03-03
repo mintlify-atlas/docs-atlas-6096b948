@@ -1,0 +1,167 @@
+---
+title: Admin panel
+description: Secure dashboard for managing your law firm website
+---
+
+The admin panel provides a secure, centralized interface for managing all aspects of your law firm website. Access the panel at `/admin` after logging in.
+
+## Authentication
+
+The admin system uses Flask-Login for secure session management.
+
+### Login process
+
+<Steps>
+  <Step title="Navigate to login">
+    Access the admin panel at `/admin/login`. If you're already authenticated, you'll be redirected to the dashboard automatically.
+  </Step>
+  
+  <Step title="Enter credentials">
+    Provide your username and password. The system validates credentials against the `User` model in the database.
+    
+    ```python
+    # From app.py:337
+    user = User.query.filter_by(username=username).first()
+    if user and user.check_password(password) and user.is_active:
+        login_user(user, remember=False)
+    ```
+  </Step>
+  
+  <Step title="Session management">
+    Sessions are set to permanent with a 3-hour lifetime (configured via `PERMANENT_SESSION_LIFETIME`).
+  </Step>
+</Steps>
+
+<Note>
+  All admin routes are protected with the `@login_required` decorator. Unauthorized access attempts redirect to the login page with a warning message.
+</Note>
+
+### User management
+
+Users are synchronized from environment variables on every deployment:
+
+<ParamField path="ADMIN_USERNAME" type="string" required>
+  Primary admin username
+</ParamField>
+
+<ParamField path="ADMIN_PASSWORD" type="string" required>
+  Primary admin password
+</ParamField>
+
+<ParamField path="USER2_USERNAME" type="string">
+  Additional user (optional)
+</ParamField>
+
+<ParamField path="USER2_PASSWORD" type="string">
+  Additional user password
+</ParamField>
+
+<Warning>
+  Users not defined in environment variables are automatically removed from the database on startup. This prevents unauthorized database modifications.
+</Warning>
+
+### Change password
+
+You can update your password from the admin panel:
+
+1. Navigate to `/admin/sifre`
+2. Enter your current password
+3. Enter your new password (minimum 8 characters)
+4. Confirm the new password
+
+Passwords are hashed using Werkzeug's `generate_password_hash` before storage in models.py:19.
+
+## Dashboard overview
+
+The dashboard (`/admin/dashboard`) displays real-time statistics and quick access links.
+
+### Statistics cards
+
+The dashboard shows six key metrics:
+
+<CardGroup cols={2}>
+  <Card title="Active team members" icon="users">
+    Count of team members with `is_active=True`
+  </Card>
+  
+  <Card title="Published articles" icon="newspaper">
+    Articles with `is_published=True`
+  </Card>
+  
+  <Card title="Draft articles" icon="file-pen">
+    Articles with `is_published=False`
+  </Card>
+  
+  <Card title="Practice areas" icon="briefcase">
+    Active practice areas
+  </Card>
+  
+  <Card title="Total messages" icon="envelope">
+    All contact form submissions
+  </Card>
+  
+  <Card title="Unread messages" icon="envelope-open">
+    Messages with `is_read=False` (highlighted in red)
+  </Card>
+</CardGroup>
+
+```python
+# From app.py:365
+stats = {
+    'team': TeamMember.query.filter_by(is_active=True).count(),
+    'articles': Article.query.filter_by(is_published=True).count(),
+    'drafts': Article.query.filter_by(is_published=False).count(),
+    'areas': PracticeArea.query.filter_by(is_active=True).count(),
+    'total_messages': ContactMessage.query.count(),
+    'unread_messages': ContactMessage.query.filter_by(is_read=False).count(),
+}
+```
+
+### Recent articles
+
+The dashboard displays the 5 most recently created articles with:
+- Article title
+- Publication status (badge: green for published, grey for draft)
+- Quick edit button
+
+### Quick access links
+
+One-click access to common tasks:
+- Add new team member
+- Write new article
+- Edit hero sections
+- Site settings
+- View public site (opens in new tab)
+
+## Unread message badge
+
+The sidebar displays a red badge next to "Mesajlar" (Messages) when you have unread contact form submissions. The badge count is injected globally via context processor in app.py:239.
+
+## Session security
+
+<Tabs>
+  <Tab title="CSRF protection">
+    All forms include CSRF tokens via Flask-WTF:
+    
+    ```html
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    ```
+  </Tab>
+  
+  <Tab title="Subdomain redirect">
+    The `admin.*` subdomain is permanently redirected to the main domain to prevent subdomain-based attacks (app.py:43).
+  </Tab>
+  
+  <Tab title="Logout">
+    Access `/admin/logout` to clear your session and return to the login page.
+  </Tab>
+</Tabs>
+
+## Health check
+
+You can verify admin panel status at `/health`, which returns:
+- Database connection status
+- Deployment environment (Vercel detection)
+- Truncated database URL
+
+This endpoint is useful for debugging deployment issues.

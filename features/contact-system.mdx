@@ -1,0 +1,369 @@
+---
+title: Contact system
+description: Manage contact form submissions with validation and tracking
+---
+
+The contact system handles form submissions from `/iletisim`, stores them in the database, and provides an admin interface for tracking and responding to messages.
+
+## Contact message model
+
+Messages are stored in the `ContactMessage` model:
+
+<ParamField path="name" type="string" required>
+  Sender's full name (max 150 characters)
+</ParamField>
+
+<ParamField path="email" type="string" required>
+  Sender's email address (max 200 characters)
+</ParamField>
+
+<ParamField path="subject" type="string">
+  Message subject (max 300 characters, optional)
+</ParamField>
+
+<ParamField path="message" type="text" required>
+  Message content
+</ParamField>
+
+<ParamField path="is_read" type="boolean">
+  Whether the message has been marked as read. Default: `false`
+</ParamField>
+
+<ParamField path="ip_address" type="string">
+  Sender's IP address (max 45 characters, supports IPv6)
+</ParamField>
+
+<ParamField path="created_at" type="datetime">
+  Submission timestamp
+</ParamField>
+
+## Contact form submission
+
+<Steps>
+  <Step title="User fills form">
+    On the public contact page (`/iletisim`), users provide:
+    
+    - **Ad Soyad** (Name): Full name
+    - **E-posta** (Email): Email address
+    - **Konu** (Subject): Optional subject line
+    - **Mesajınız** (Message): Message content
+  </Step>
+  
+  <Step title="Client-side validation">
+    HTML5 validation ensures:
+    
+    - Name field is not empty
+    - Email field contains a valid email format
+    - Message field is not empty
+  </Step>
+  
+  <Step title="Form submission">
+    The form POSTs to `/iletisim/gonder` with CSRF token:
+    
+    ```html
+    <form method="POST" action="{{ url_for('iletisim_gonder') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      ...
+    </form>
+    ```
+  </Step>
+  
+  <Step title="Server-side validation">
+    The backend validates all fields:
+    
+    ```python
+    # From app.py:307
+    errors = []
+    if len(name) < 2:
+        errors.append('Ad Soyad en az 2 karakter olmalı.')
+    if not re.match(r'^[^@\s]+@[^@\s]+\.[^@\s]+$', email):
+        errors.append('Geçerli bir e-posta adresi girin.')
+    if len(message) < 10:
+        errors.append('Mesajınız en az 10 karakter olmalı.')
+    ```
+    
+    <Note>
+      Validation errors are flashed and the user is redirected back to `/iletisim`.
+    </Note>
+  </Step>
+  
+  <Step title="Save to database">
+    If validation passes:
+    
+    ```python
+    # From app.py:319
+    msg = ContactMessage(
+        name=name,
+        email=email,
+        subject=subject or None,
+        message=message,
+        ip_address=request.remote_addr,
+    )
+    db.session.add(msg)
+    db.session.commit()
+    ```
+    
+    The IP address is captured via `request.remote_addr` for spam prevention.
+  </Step>
+  
+  <Step title="Success message">
+    The user sees:
+    
+    > Mesajınız alındı. En kısa sürede dönüş yapacağız.
+    
+    And is redirected to `/iletisim`.
+  </Step>
+</Steps>
+
+## Validation rules
+
+<Tabs>
+  <Tab title="Name">
+    - Minimum 2 characters
+    - No maximum (database limit: 150)
+    - Whitespace is trimmed
+  </Tab>
+  
+  <Tab title="Email">
+    - Must match regex: `^[^@\s]+@[^@\s]+\.[^@\s]+$`
+    - Basic format check (no DNS validation)
+    - Whitespace is trimmed
+    - Stored as-is (not normalized)
+  </Tab>
+  
+  <Tab title="Subject">
+    - Optional field
+    - Stored as `NULL` if empty
+    - No validation applied
+  </Tab>
+  
+  <Tab title="Message">
+    - Minimum 10 characters
+    - No maximum (stored as TEXT)
+    - Whitespace is trimmed
+  </Tab>
+</Tabs>
+
+<Warning>
+  The system does **not** include spam protection (no CAPTCHA, rate limiting, or honeypot). Consider adding reCAPTCHA or Cloudflare Turnstile for production.
+</Warning>
+
+## Admin message management
+
+View and manage messages at `/admin/mesajlar`.
+
+### Message list
+
+Messages are displayed in reverse chronological order:
+
+```python
+# From app.py:677
+msgs = ContactMessage.query.order_by(ContactMessage.created_at.desc()).all()
+```
+
+Each row shows:
+- **Unread indicator**: Red dot for `is_read=False`
+- **Name**: Sender's name
+- **Email**: Clickable `mailto:` link
+- **Subject**: Or "—" if blank
+- **Date**: Formatted as `DD.MM.YYYY HH:MM`
+- **Actions**: Expand, mark read, delete
+
+<Note>
+  Unread messages have a highlighted background (`#fdf8f8`) and bold font weight.
+</Note>
+
+### Expand message
+
+<Steps>
+  <Step title="Click expand icon">
+    Click the chevron icon to reveal the full message content.
+  </Step>
+  
+  <Step title="View details">
+    The message body appears below the row with:
+    
+    - Full message text (preserves line breaks via `white-space: pre-wrap`)
+    - **Yanıtla** (Reply) button → opens email client with pre-filled `mailto:` link
+  </Step>
+  
+  <Step title="Visual feedback">
+    Expanding a message removes the unread dot (visual only — does not mark as read in database).
+    
+    ```javascript
+    // From admin/messages.html:93
+    const dot = r && r.querySelector('span[style*="border-radius:50%"]');
+    if (dot) dot.style.display = 'none';
+    ```
+  </Step>
+</Steps>
+
+### Mark as read
+
+<Steps>
+  <Step title="Click read button">
+    For unread messages, click the checkmark icon.
+  </Step>
+  
+  <Step title="Update database">
+    POSTs to `/admin/mesajlar/<id>/oku`:
+    
+    ```python
+    # From app.py:685
+    msg.is_read = True
+    db.session.commit()
+    ```
+  </Step>
+  
+  <Step title="Update badge">
+    The unread count badge in the sidebar decreases automatically (page refresh required).
+  </Step>
+</Steps>
+
+<Note>
+  There is no "mark as unread" feature. Once marked read, it remains read.
+</Note>
+
+### Delete message
+
+<Warning>
+  Deletion is permanent and cannot be undone.
+</Warning>
+
+<Steps>
+  <Step title="Click delete icon">
+    Click the trash icon next to any message.
+  </Step>
+  
+  <Step title="Confirm deletion">
+    A browser confirmation dialog appears:
+    
+    ```javascript
+    onsubmit="return confirm('Bu mesajı silmek istediğinizden emin misiniz?')"
+    ```
+  </Step>
+  
+  <Step title="Remove from database">
+    POSTs to `/admin/mesajlar/<id>/sil`:
+    
+    ```python
+    # From app.py:694
+    db.session.delete(msg)
+    db.session.commit()
+    flash('Mesaj silindi.', 'info')
+    ```
+  </Step>
+</Steps>
+
+## Unread message tracking
+
+Unread messages are tracked in two places:
+
+### Sidebar badge
+
+The admin sidebar displays a red badge with the unread count:
+
+```python
+# From app.py:240
+if request.endpoint and request.endpoint.startswith('admin_') and current_user.is_authenticated:
+    ctx['unread_messages_count'] = ContactMessage.query.filter_by(is_read=False).count()
+```
+
+This is injected globally via the `inject_settings()` context processor.
+
+### Messages page header
+
+The messages page shows an additional badge:
+
+```python
+# From app.py:678
+unread_count = ContactMessage.query.filter_by(is_read=False).count()
+```
+
+```html
+<!-- From admin/messages.html:10 -->
+<span class="badge badge-red">{{ unread_count }} okunmamış</span>
+```
+
+### Dashboard highlight
+
+The dashboard's "Messages" card has a red outline when unread messages exist:
+
+```html
+<!-- From admin/dashboard.html:35 -->
+{{ 'outline:2px solid var(--bordeaux);' if stats.unread_messages > 0 else '' }}
+```
+
+## Reply workflow
+
+<Steps>
+  <Step title="Expand message">
+    Click the expand icon to view the full message.
+  </Step>
+  
+  <Step title="Click reply button">
+    Click **Yanıtla** to open your default email client.
+  </Step>
+  
+  <Step title="Pre-filled email">
+    The `mailto:` link includes:
+    
+    - **To**: Sender's email
+    - **Subject**: `Re: {subject}` or `Re: Mesajınız hakkında` if no subject
+    
+    ```html
+    <!-- From admin/messages.html:67 -->
+    <a href="mailto:{{ m.email }}?subject=Re: {{ m.subject or 'Mesajınız hakkında' }}">
+    ```
+  </Step>
+  
+  <Step title="Send reply">
+    Compose and send your reply from your email client.
+  </Step>
+</Steps>
+
+<Note>
+  The system does **not** track sent replies. Consider integrating an email service (SendGrid, Mailgun) for in-app replies and tracking.
+</Note>
+
+## Empty state
+
+When no messages exist, the admin page displays:
+
+- Inbox icon (2.5rem)
+- "Henüz mesaj yok." text
+- Centered layout with grey color
+
+```html
+<!-- From admin/messages.html:79 -->
+<div style="text-align:center;padding:48px 0;color:#a0aec0;">
+  <i class="fa-solid fa-inbox" style="font-size:2.5rem;"></i>
+  <p>Henüz mesaj yok.</p>
+</div>
+```
+
+## IP address logging
+
+The sender's IP is captured for:
+- Spam detection
+- Abuse prevention
+- Geographic analytics (if implemented)
+
+```python
+# From app.py:324
+ip_address=request.remote_addr,
+```
+
+<Warning>
+  If behind a proxy (Cloudflare, Vercel), `request.remote_addr` may return the proxy IP. Use `X-Forwarded-For` header for the real IP.
+</Warning>
+
+## CSRF protection
+
+All contact form submissions require a valid CSRF token:
+
+```html
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+```
+
+This prevents cross-site request forgery attacks. Flask-WTF validates the token automatically.
